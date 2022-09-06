@@ -26,7 +26,6 @@ def main():
     n_dt=0
 
     """ 
-    plt.scatter(fluid_coords[:,0],fluid_coords[:,1],s=5)
     
     particles are objects of the particle class contain both solid and fluid particles
     rho_0: Reference density of the particles

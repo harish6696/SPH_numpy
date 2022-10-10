@@ -20,6 +20,7 @@ def main():
     
     #Generate paramters for dam break case
     particles,rho_0,gamma,c_0,p_0,Xi,mu,alpha, a_wall, fluid_particle_indices, wall_particle_indices, g, Height = dam_break_case(dx,d,alpha)
+    particles = PointCloud(None)
     particles=np.array(particles)
     
     t=0
@@ -42,12 +43,12 @@ def main():
     Height:        Height of the dam problem (0.3) """
 
     #Acceleration
+    math.max(particles.points['y'])
 
-    H= np.max(particles[:len(fluid_particle_indices),1])-np.min(particles[:len(fluid_particle_indices),1])+dx
+    H = np.max(particles[:len(fluid_particle_indices),1])-np.min(particles[:len(fluid_particle_indices),1])+dx
     print("actual height of water column from particles: "+ str(H))
-    
-    a_x = np.zeros(len(fluid_particle_indices))
-    a_y = np.zeros(len(fluid_particle_indices))
+
+    a_x = a_y = math.zeros(instance(particles))
 
     if abs(H - Height) >= 1.0e-6:
         print("wrong height specified,please input dx again")

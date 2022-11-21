@@ -1,13 +1,18 @@
 
 from kernal_function import *
+from phi.flow import *
 
-def density_derivative(fluid_particles, wall_particles, fluid_particle_density,fluid_pressure,fluid_particle_mass,fluid_particle_velocity,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx):
+def calculate_density_derivative(fluid_particles, wall_particles, wall_particle_velocity, fluid_particle_density,fluid_pressure,fluid_particle_mass,fluid_particle_velocity,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx):
     #Note: No wall_particle_density and wall_particle_mass in input arguments. It is expected to be zero initially
 
     fluid_coords=fluid_particles.points   #fluid_particles and boundary_particles are a point cloud objects
     wall_coords=wall_particles.points
     particle_coords=math.concat([fluid_coords,wall_coords],'particles')  # concatenating fluid coords and then boundary coords
     
+    #wall_particle_velocity= wall_particles *(0,0) ####QQQQQQQQ DOES THIS HAVE A DIMENSION NAMED PARTICLES ? (same q for fluid_particle_velocity)
+
+    particle_velocity=math.concat([fluid_particle_velocity,wall_particle_velocity], dim='particles') 
+
     wall_particle_density=math.rename_dims(math.zeros(instance(wall_coords)),'particles','others')
     wall_particle_mass=math.rename_dims(math.zeros(instance(wall_coords)),'particles','others')
 
@@ -29,9 +34,9 @@ def density_derivative(fluid_particles, wall_particles, fluid_particle_density,f
     
     #QQQQQQQQQQQWhy in the sample did u take fluid particle having 6 elements? fluid particles are only three 
 
-    fluid_particle_relative_velocity=fluid_particle_velocity - math.rename_dims(fluid_particle_velocity,'particles', 'others')# 2d matrix of fluid particle velocity
-    dvx=fluid_particle_relative_velocity['x'].particles[:fluid_coords.particles.size].others[:]# separating the x and y components
-    dvy=fluid_particle_relative_velocity['y'].particles[:fluid_coords.particles.size].others[:]
+    particle_relative_velocity=particle_velocity - math.rename_dims(particle_velocity,'particles', 'others')# 2d matrix of ALL particle velocity
+    dvx=particle_relative_velocity['x'].particles[:fluid_coords.particles.size].others[:]# separating the x and y components
+    dvy=particle_relative_velocity['y'].particles[:fluid_coords.particles.size].others[:]
 
     fluid_particle_relative_dist=distance_matrix.particles[:fluid_coords.particles.size].others[:]
     dvx=math.where(fluid_particle_relative_dist>r_c,0,dvx) # relative x-velocity between a fluid particle and its neighbour

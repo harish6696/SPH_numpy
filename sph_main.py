@@ -1,6 +1,6 @@
-import numpy as np
+#import numpy as np
 import sys
-np.set_printoptions(threshold=sys.maxsize)
+#np.set_printoptions(threshold=sys.maxsize)
 from adaptive_time_step import *
 from dam_break_parameters import *
 from boundary_update import *
@@ -20,8 +20,8 @@ def main():
     
     #Generate paramters for dam break case
     fluid_particles,wall_particles, fluid_initial_density,wall_initial_density, \
-    fluid_particle_density,wall_density, fluid_particle_pressure, wall_pressure,  \
-    fluid_particle_velocity,wall_initial_velocity, wall_prescribed_velocity, fluid_particle_mass, \
+    fluid_particle_density,wall_particle_density, fluid_particle_pressure, wall_particle_pressure,  \
+    fluid_particle_velocity,wall_particle_velocity, wall_prescribed_velocity, fluid_particle_mass, \
     fluid_adiabatic_exp,wall_adiabatic_exp, fluid_c_0,wall_c_0,fluid_p_0,wall_p_0,fluid_Xi,wall_Xi,fluid_alpha,wall_alpha, \
     g, Height= dam_break_case(dx,d,alpha)
 
@@ -49,41 +49,70 @@ def main():
     
     #H = np.max(particles[:len(fluid_particle_indices),1])-np.min(particles[:len(fluid_particle_indices),1])+dx
     H=math.max(fluid_particles.points['y'])-math.min(fluid_particles.points['y'])+dx
-    print('actual height of water column is: ' +str(H))
+    print('Actual height of water column is: ' +str(H))
    
     if abs(H - Height) >= 1.0e-6:
         print("wrong height specified,please input dx again")
-        exit()
+        #exit()
     
     #reference_values
     
-    v_ref = np.sqrt(2 *abs(g) * H )
+    v_ref = math.sqrt(2 *abs(g) * H )
     t_ref = H / v_ref 
     
     time_nondim = 5    # nondimensional running time (t/t_ref)
     t_end = time_nondim * t_ref
     print("Total simulation time is: "+str(t_end))
-    #breakpoint()
-    print("Total number of fluid particles: "+ str(len(fluid_particle_indices)))
-    print("Total number of wall particles: "+ str(len(wall_particle_indices)))
-    while t<=t_end:
+
+    print("Total number of fluid particles: "+ str(fluid_particles.elements.center.particles.size))
+    print("Total number of wall particles: "+ str(wall_particles.elements.center.particles.size))
+
+    while n_dt == 0:  ##Replace with t < t_end once everything is working
 
         print("Simulation progress: "+ str((100*(t/t_end)))+ " Time step "+ str(n_dt))
-
+        
         #DO SIMULATION   
-        dt = time_step_size(fluid_c_0,particles,h,alpha,d,g)
-        #print("Time step size is: "+str(dt))
+        #dt = time_step_size(fluid_c_0,particles,h,alpha,d,g)
+        dt = time_step_size(fluid_c_0,fluid_particle_velocity, wall_particle_velocity,h,fluid_alpha,d,g)
+        print("Time step size is: "+str(dt))
+        math.print(dt)
         t=t+dt
         n_dt=n_dt+1
-        #print(t)
+        
         if n_dt == 1:
             #BOUNDARY UPDATE FUNCTION
-            wall_particle_pressure=boundary_update(fluid_particles, wall_particles, fluid_particle_pressure,d,r_c,h,g)
+            wall_particle_pressure, wall_particle_velocity =boundary_update(fluid_particles,wall_particles,fluid_particle_pressure,fluid_particle_density,fluid_particle_velocity,wall_particle_velocity,d,r_c,h,g)
 
             #VELOCITY DERIVATIVE FUNCTION
-            a_x,a_y=calculate_acceleration(fluid_particles, wall_particles, fluid_particle_density,fluid_particle_pressure,wall_particle_pressure,fluid_particle_mass,fluid_particle_velocity,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx, fluid_alpha,fluid_c_0,g)
+            fluid_particle_acceleration =calculate_acceleration(fluid_particles, wall_particles,wall_particle_velocity, fluid_particle_density,fluid_particle_pressure,wall_particle_pressure,fluid_particle_mass,fluid_particle_velocity,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx, fluid_alpha,fluid_c_0,g)
 
-                
+        #fluid_particle_velocity update
+        fluid_particle_velocity = fluid_particle_velocity + (dt/2)*fluid_particle_acceleration #initial fluid_particle_velocity obtained from dam_break_case function
+
+        fluid_particle_position = fluid_particles.elements.center #fluid_particles is a point cloud object
+        #fluid_particle_position_update
+        fluid_particle_position = fluid_particle_position + (dt/2)*fluid_particle_velocity
+
+        #math.print(fluid_particle_position.values)
+
+        wall_particle_pressure, wall_particle_velocity = boundary_update(fluid_particles,wall_particles,fluid_particle_pressure,fluid_particle_density, fluid_particle_velocity,wall_particle_velocity,d,r_c,h,g)
+
+        drho_by_dt= calculate_density_derivative(fluid_particles, wall_particles, wall_particle_velocity, fluid_particle_density,fluid_particle_pressure,fluid_particle_mass,fluid_particle_velocity,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx)
+        
+        #Density Update: 
+        fluid_particle_density = fluid_particle_density + (dt*drho_by_dt)
+
+        #Pressure Update:  p_0[0] * ((particles[:len(fluid_particle_indices),5]/rho_0[0])**gamma[0] - 1 ) + Xi[0] 
+        fluid_particle_pressure = fluid_p_0 *((fluid_particle_density/fluid_initial_density)**fluid_adiabatic_exp -1) + fluid_Xi
+
+        #Useless if there is no wall velocity
+        fluid_particle_position = fluid_particle_position + (dt/2)*fluid_particle_velocity
+        
+        #Calculate Acceleration
+        fluid_particle_acceleration = calculate_acceleration(fluid_particles, wall_particles,wall_particle_velocity, fluid_particle_density,fluid_particle_pressure,wall_particle_pressure,fluid_particle_mass,fluid_particle_velocity,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx, fluid_alpha,fluid_c_0,g)
+        #fluid_particle_velocity update
+        fluid_particle_velocity = fluid_particle_velocity + (dt/2)*fluid_particle_acceleration
+
 if __name__== "__main__":
     main()
 

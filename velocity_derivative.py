@@ -1,6 +1,7 @@
 from kernal_function import *
+from phi.flow import *
 
-def calculate_acceleration(fluid_particles, wall_particles, fluid_particle_density,fluid_particle_pressure,wall_particle_pressure,fluid_particle_mass,fluid_particle_velocity,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx, fluid_alpha,fluid_c_0,g):
+def calculate_acceleration(fluid_particles, wall_particles,wall_particle_velocity ,fluid_particle_density,fluid_particle_pressure,wall_particle_pressure,fluid_particle_mass,fluid_particle_velocity,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx, fluid_alpha,fluid_c_0,g):
 
     dx=h; epsilon= 0.01 # parameter to avoid zero denominator 
 
@@ -8,12 +9,28 @@ def calculate_acceleration(fluid_particles, wall_particles, fluid_particle_densi
     wall_coords=wall_particles.points
     particle_coords=math.concat([fluid_coords,wall_coords],'particles')  # concatenating fluid coords and then boundary coords
     
+
+    fluid_particle_density = math.rename_dims(fluid_particle_density,'particles','others')
     wall_particle_density=math.rename_dims(math.zeros(instance(wall_coords)),'particles','others')
-    wall_particle_mass=math.rename_dims(math.zeros(instance(wall_coords)),'particles','others')
     
+    fluid_particle_mass = math.rename_dims(fluid_particle_mass,'particles', 'others')
+    wall_particle_mass=math.rename_dims(math.zeros(instance(wall_coords)),'particles','others')
+    ###CHECK THIS IF REQUIRED WHILE RUNNING THE CODE
+    
+    fluid_particle_velocity = math.rename_dims(fluid_particle_velocity, 'particles', 'others')
+    wall_particle_velocity=math.rename_dims(wall_particle_velocity,'particles','others')
+
+    fluid_particle_pressure = math.rename_dims(fluid_particle_pressure, 'particles', 'others')
+    wall_particle_pressure=math.rename_dims(wall_particle_pressure,'particles','others')
+    
+    particle_velocity = math.concat([fluid_particle_velocity.values,wall_particle_velocity], dim='others')
     particle_density= math.concat([fluid_particle_density,wall_particle_density], dim='others') #1D Scalar array of densities of all particles
     particle_mass= math.concat([fluid_particle_mass,wall_particle_mass], dim='others')
     particle_pressure=math.concat([fluid_particle_pressure,wall_particle_pressure], dim='others')
+
+    #Compute distance between all particles 
+    distance_matrix_vec= particle_coords - math.rename_dims(particle_coords, 'particles', 'others') # contains both the x and y component of separation between particles
+    distance_matrix = math.vec_length(distance_matrix_vec) # contains magnitude of distance between ALL particles
 
     alpha_ab = math.where(distance_matrix==0,0,fluid_alpha) #Removing the particle itself from further calculation
     alpha_ab=math.where(distance_matrix> r_c, 0, alpha_ab)   #N X N matrix N-->all particles
@@ -24,26 +41,28 @@ def calculate_acceleration(fluid_particles, wall_particles, fluid_particle_densi
     fluid_particle_neighbour_c_ab=c_ab.particles[:fluid_coords.particles.size].others[:]
 
     #Below we create matrices which have non-zero entries where the neighbour is inside cut-off radius 'r_c' rest all entries are 0
+    particle_velocity=math.rename_dims(particle_velocity,'others','particles')
+    particle_velocity_matrix =  particle_velocity- math.rename_dims(particle_velocity, 'particles', 'others') 
+
     particle_neighbour_density = math.where(distance_matrix==0,0,particle_density)  #Removing the particle itself from further calculation
     particle_neighbour_density = math.where(distance_matrix > r_c, 0, particle_neighbour_density) #0 for places which are not neighbours for particle under consideration. Stacks the particle density vertically. i.e. dupicates the densities
     
+    
+
     particle_neighbour_mass = math.where(distance_matrix==0,0,particle_mass) #Removing the particle itself from further calculation
-    particle_neighbour_mass=math.where(distance_matrix > r_c, 0, particle_neighbour_mass)
+    particle_neighbour_mass = math.where(distance_matrix > r_c, 0, particle_neighbour_mass)
 
     particle_neighbour_pressure = math.where(distance_matrix==0,0,particle_pressure) #Removing the particle itself from further calculation
     particle_neighbour_pressure= math.where(distance_matrix > r_c,0, particle_neighbour_pressure)
 
-    #Compute distance between all particles 
-    distance_matrix_vec= particle_coords - math.rename_dims(particle_coords, 'particles', 'others') # contains both the x and y component of separation between particles
-    distance_matrix = math.vec_length(distance_matrix_vec) # contains magnitude of distance between ALL particles
-    
-    fluid_particle_relative_velocity=fluid_particle_velocity - math.rename_dims(fluid_particle_velocity,'particles', 'others')# 2d matrix of fluid particle velocity
-    dvx=fluid_particle_relative_velocity['x'].particles[:fluid_coords.particles.size].others[:]# separating the x and y components
-    dvy=fluid_particle_relative_velocity['y'].particles[:fluid_coords.particles.size].others[:]
 
-    fluid_particle_relative_dist=distance_matrix.particles[:fluid_coords.particles.size].others[:]
-    dvx=math.where(fluid_particle_relative_dist>r_c,0,dvx) # relative x-velocity between a fluid particle and its neighbour
-    dvy=math.where(fluid_particle_relative_dist>r_c,0,dvy)
+    
+    dvx=particle_velocity_matrix['x'].particles[:fluid_coords.particles.size].others[:]# separating the x and y components
+    dvy=particle_velocity_matrix['y'].particles[:fluid_coords.particles.size].others[:]
+
+    fluid_particle_all_neighbours_dist=distance_matrix.particles[:fluid_coords.particles.size].others[:]
+    dvx=math.where(fluid_particle_all_neighbours_dist>r_c,0,dvx) # relative x-velocity between a fluid particle and its neighbour
+    dvy=math.where(fluid_particle_all_neighbours_dist>r_c,0,dvy)
 
     ######Do all the cut off things before the final cut off for distance matrix
     distance_matrix_vec= math.where(distance_matrix > r_c, 0, distance_matrix_vec)
@@ -59,6 +78,7 @@ def calculate_acceleration(fluid_particles, wall_particles, fluid_particle_densi
     dry=distance_matrix_vec['y'].particles[:fluid_coords.particles.size].others[:] 
     
     #rho_b, m_b and p_b matrices rows are for each fluid particle and cols are fluid and wall particles
+    ########THE BELOW 3 MATRICES CAN BE REMOVED
     fluid_particle_neighbour_density=particle_neighbour_density.particles[:fluid_coords.particles.size].others[:]
     fluid_particle_neighbour_mass=particle_neighbour_mass.particles[:fluid_coords.particles.size].others[:]
     fluid_particle_neighbour_pressure = particle_neighbour_pressure.particles[:fluid_coords.particles.size].others[:]
@@ -71,6 +91,9 @@ def calculate_acceleration(fluid_particles, wall_particles, fluid_particle_densi
 
     ######'fluid_pressure' is for each fluid particle 
     fluid_particle_wall_neighbour_density_term=fluid_initial_density * ((fluid_particle_pressure - fluid_Xi) / fluid_p_0 + 1)**(1/fluid_adiabatic_exp)
+    print('term')
+    print(fluid_particle_wall_neighbour_density_term)
+    
     #ALL boundary particle neighbours for a given fluid particle will have same density 
     fluid_particle_wall_neighbour_density=math.where(fluid_particle_wall_neighbour_density!=0,fluid_particle_wall_neighbour_density_term,fluid_particle_wall_neighbour_density)
     fluid_particle_wall_neighbour_mass =math.where(fluid_particle_wall_neighbour_mass!=0,(fluid_initial_density*dx*dx),fluid_particle_wall_neighbour_mass)
@@ -107,7 +130,7 @@ def calculate_acceleration(fluid_particles, wall_particles, fluid_particle_densi
     a_y=math.sum(pressure_fact*math.divide_no_nan(dry,rad),'others')
 
     ### ARTIFICIAL VISCOSITY
-    visc_art_fact=math.zeros(instance(fluid_particle_relative_dist))  #zeros matrix with size: (fluid_particles X all_particles)
+    visc_art_fact=math.zeros(instance(fluid_particle_all_neighbours_dist))  #zeros matrix with size: (fluid_particles X all_particles)
     temp_matrix= (drx*dvx) + (dry*dvy) 
 
     # visc_art_fact_term = m_b * alpha_ab * h * c_ab * (((dvx * drx) + (dvy * dry))/(rho_ab * ((rad**2) + epsilon * (h**2)))) * der_W
@@ -123,8 +146,12 @@ def calculate_acceleration(fluid_particles, wall_particles, fluid_particle_densi
     #### GRAVITY
     a_y=a_y+g
 
+    fluid_particle_acceleration = stack([a_x, a_y], channel(vector='x,y'))
     #Acceleration of only fluid particles calculated
-    return a_x, a_y
+
+    print('REached end of calculate_acc()....hurray!')
+    breakpoint()
+    return fluid_particle_acceleration
 
 
 

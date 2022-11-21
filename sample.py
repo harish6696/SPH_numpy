@@ -44,6 +44,7 @@ fluid_velocity = fluid_particles * (0, 0)
     
 #math.print(fluid_velocity)
 
+#ACTUALLY IT IS PARTICLE VELOCITY
 fluid_velocity= tensor([(1, 0), (10, 2), (0, 12),(1,1),(3,4),(5,5)], instance('particles') & channel(vector='x,y'))
 
 #print(fluid_velocity)
@@ -462,15 +463,6 @@ fluid_pressure=math.zeros(instance(fluid_coords))
 wall_particles = PointCloud(Sphere(wall_coords, radius=0.002))
 fluid_particles = PointCloud(Sphere(fluid_coords, radius=0.002))
 
-#particle_coords=numpy.asarray(math.concat([fluid_coords,wall_coords],'particles')).tolist()
-
-#neighbor_ids = neighbors.KDTree(particle_coords).query_radius(particle_coords,0.4,return_distance=True,sort_results=True)[0] 
-
-#neighbor_ids = [np.delete(x, 0) for x in neighbor_ids]
-#distances = [np.delete(x, 0) for x in distances]
-
-#print("Neighbor ids: "+ str(neighbor_ids)) #after removing self
-#print("Distances: " + str(distances))
 
 coords=math.concat([fluid_coords,wall_coords],'particles')
 

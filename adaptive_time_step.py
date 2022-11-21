@@ -1,25 +1,25 @@
 from phi.flow import *
-import numpy as np
 
-def time_step_size(c_0,particles,h,alpha,d,g):
+def time_step_size(fluid_c_0,fluid_particle_velocity, wall_particle_velocity,h,fluid_alpha,d,g):
 
-    dt=np.zeros(3)   # take the minimum out of these 3
-    particles=np.array(particles)
-    particle_velocity_magnitude=np.zeros(len(particles))
-    particle_velocity_magnitude=math.sqrt((particles[:,6])**2 +(particles[:,7])**2)
-    vmax_magnitude= np.max(particle_velocity_magnitude) # find the  maximum velocity
+    #dt=np.zeros(3)   # take the minimum out of these 3
+    
+    particle_velocity= math.concat([fluid_particle_velocity,wall_particle_velocity], 'particles')
+    vmax_magnitude= math.max(math.vec_length(particle_velocity.values))
 
-    c_max= np.max(c_0)
+    c_max= fluid_c_0  # wall_c_0 =0 so no point in taking the max out of them
 
-    dt[0]=0.25*h/(c_max+vmax_magnitude) # single value
+    dt_1=0.25*h/(c_max+vmax_magnitude) # single value
 
     #viscous condition
-    mu=0.5/(d+2) * np.max(alpha)*h*c_max
-    dt[1]=0.125*(h**2)/mu
+    mu=0.5/(d+2) *fluid_alpha*h*c_max
+    dt_2=0.125*(h**2)/mu
 
-    dt[2]= 0.25*math.sqrt(h/abs(g))
+    dt_3= 0.25*math.sqrt(h/abs(g))
 
-    dt = np.min(dt)
+    dt= tensor([dt_1,dt_2,dt_3], instance('time_steps') )
+
+    dt = math.min(dt)
 
     return dt
 

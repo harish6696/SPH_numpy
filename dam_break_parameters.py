@@ -17,9 +17,9 @@ def dam_break_case(dx, d, alph):
     fluid_alpha=alph  # artificial visc factor
 
     #####UNCOMMENT LATER
-    fluid_coords = pack_dims(math.meshgrid(x=100, y=50), 'x,y', instance('particles')) * (0.6/100, 0.3/50) + (0.003,0.003)  # 5000 fluid particle coordinates created     
+    #fluid_coords = pack_dims(math.meshgrid(x=100, y=50), 'x,y', instance('particles')) * (0.6/100, 0.3/50) + (0.003,0.003)  # 5000 fluid particle coordinates created     
     
-    #fluid_coords =pack_dims(math.meshgrid(x=1, y=3), 'x,y', instance('particles')) * (0.2/1, 0.12/3) + (0.003,0.003)
+    fluid_coords =pack_dims(math.meshgrid(x=1, y=3), 'x,y', instance('particles')) * (0.2/1, 0.12/3) + (0.003,0.003)
     
     fluid_particles = PointCloud(Sphere(fluid_coords, radius=0.002))  #"""is this radius only for visualization?????????????"""
     fluid_velocity = fluid_particles * (0, 0)
@@ -46,10 +46,10 @@ def dam_break_case(dx, d, alph):
     #print(f"{center_wall_coords:full:shape}")
     
     ####UNCOMMENT LATER
-    wall_coords=math.concat([left_wall_coords, right_wall_coords,center_wall_coords], 'particles') #1629 wall particles
+    #wall_coords=math.concat([left_wall_coords, right_wall_coords,center_wall_coords], 'particles') #1629 wall particles
     ####
 
-    #wall_coords =  pack_dims(math.meshgrid(x=1, y=3), 'x,y', instance('particles')) * ( (0.018/1), (0.204/3) ) + (-0.015, 0.003) 
+    wall_coords =  pack_dims(math.meshgrid(x=1, y=3), 'x,y', instance('particles')) * ( (0.018/1), (0.204/3) ) + (-0.015, 0.003) 
     wall_particles = PointCloud(Sphere(wall_coords, radius=0.002))
 
     #print('fluid')

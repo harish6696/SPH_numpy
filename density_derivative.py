@@ -11,7 +11,7 @@ def calculate_density_derivative(fluid_particles, wall_particles, wall_particle_
     
     #wall_particle_velocity= wall_particles *(0,0) ####QQQQQQQQ DOES THIS HAVE A DIMENSION NAMED PARTICLES ? (same q for fluid_particle_velocity)
 
-    particle_velocity=math.concat([fluid_particle_velocity,wall_particle_velocity], dim='particles') 
+    particle_velocity=math.concat([fluid_particle_velocity.values,wall_particle_velocity.values], dim='particles') 
 
     wall_particle_density=math.rename_dims(math.zeros(instance(wall_coords)),'particles','others')
     wall_particle_mass=math.rename_dims(math.zeros(instance(wall_coords)),'particles','others')
@@ -22,16 +22,16 @@ def calculate_density_derivative(fluid_particles, wall_particles, wall_particle_
     particle_density= math.concat([fluid_particle_density,wall_particle_density], dim='others') #1D Scalar array of densities of all particles (now it is a row vector)
     particle_mass= math.concat([fluid_particle_mass,wall_particle_mass], dim='others')
     
+        #Compute distance between all particles 
+    distance_matrix_vec= particle_coords - math.rename_dims(particle_coords, 'particles', 'others') # contains both the x and y component of separation between particles
+    distance_matrix = math.vec_length(distance_matrix_vec) # contains magnitude of distance between ALL particles
+    
     particle_neighbour_density = math.where(distance_matrix==0,0,particle_density)
     particle_neighbour_density=math.where(distance_matrix > r_c, 0, particle_neighbour_density) #0 for places which are not neighbours for particle under consideration. Stacks the particle density vertically. i.e. dupicates the densities
     
     particle_neighbour_mass = math.where(distance_matrix==0,0,particle_mass)
     particle_neighbour_mass=math.where(distance_matrix > r_c, 0, particle_neighbour_mass)
 
-    #Compute distance between all particles 
-    distance_matrix_vec= particle_coords - math.rename_dims(particle_coords, 'particles', 'others') # contains both the x and y component of separation between particles
-    distance_matrix = math.vec_length(distance_matrix_vec) # contains magnitude of distance between ALL particles
-    
     #QQQQQQQQQQQWhy in the sample did u take fluid particle having 6 elements? fluid particles are only three 
 
     particle_relative_velocity=particle_velocity - math.rename_dims(particle_velocity,'particles', 'others')# 2d matrix of ALL particle velocity

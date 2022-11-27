@@ -10,20 +10,7 @@ wall_coords = pack_dims(math.meshgrid(x=1, y=3), 'x,y', instance('particles')) *
 coords=math.concat([fluid_coords,wall_coords],'particles')
 distance_matrix_vec= coords - math.rename_dims(coords, 'particles', 'others') # contains both the x and y component of separation between particles
 distance_matrix = math.vec_length(distance_matrix_vec)
-#math.print(distance_matrix)
-alpha=2
-alpha_ab=math.where( (distance_matrix==0), 0, alpha)# REMOVE THE SELF PARTICLES (Diagonals are set to 0)
-#print('inter')
-#math.print(alpha_ab)
-alpha_ab=math.where((distance_matrix>0.04) , 0, alpha_ab)
-#print('final')
-#math.print(alpha_ab)
 
-alpha_ab_fluid=alpha_ab.particles[:fluid_coords.particles.size].others[:]
-
-#math.print(alpha_ab_fluid)
-
-#breakpoint()
 
 distance_matrix = math.where(distance_matrix > 0.04, 0, distance_matrix) 
 
@@ -42,14 +29,19 @@ coords=math.concat([fluid_coords,wall_coords],'particles')
 
 fluid_velocity = fluid_particles * (0, 0)
     
+
+
+
 #math.print(fluid_velocity)
 
 #ACTUALLY IT IS PARTICLE VELOCITY
-fluid_velocity= tensor([(1, 0), (10, 2), (0, 12),(1,1),(3,4),(5,5)], instance('particles') & channel(vector='x,y'))
+fluid_velocity_temp= tensor([(1, 0), (10, 2), (0, 12),(1,1),(3,4),(5,5)], instance('particles') & channel(vector='x,y'))
+#fluid_velocity['x'].values = fluid_velocity_temp['x']
+fluid_particles = fluid_particles.with_values(fluid_velocity_temp)
 
-#print(fluid_velocity)
+math.print(fluid_particles.values)
 
-#math.print(fluid_velocity.fluid_vel[1]['x'])
+breakpoint()
 
 fluid_relative_velocity=fluid_velocity - math.rename_dims(fluid_velocity,'particles', 'others')
 

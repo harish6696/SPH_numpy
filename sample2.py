@@ -48,20 +48,32 @@ distance_matrix = distance_matrix.particles[:fluid_coords.particles.size].others
 print('cutt off')
 math.print(distance_matrix)
 
-fpwnd= math.zeros(instance(distance_matrix))
+helper_matrix = math.where(distance_matrix>0.04, 0, distance_matrix)
+helper_matrix = math.where(helper_matrix!= 0, 1 , helper_matrix)
+
+print('helper matrix')
+print(helper_matrix)
+
+
+term= tensor([2,3,4], instance('particles') )
+res = helper_matrix * term
+print('res')
+math.print(res)
+
+#fpwnd= math.zeros(instance(distance_matrix))
 #print('fluid particle wall neighbour density')
 #print(fpwnd)
 
-term= tensor([2,3,4], instance('particles') )
 
-wall_coords = math.rename_dims(wall_coords, 'particles','others')
 
-term=expand(term, instance(wall_coords))
+#wall_coords = math.rename_dims(wall_coords, 'particles','others')
+
+#term=expand(term, instance(wall_coords))
 
 #
-print('expanded term')
-print(term)
-math.print(term)
+#print('expanded term')
+#print(term)
+#math.print(term)
 
 
 #fpwnd_new = math.where()

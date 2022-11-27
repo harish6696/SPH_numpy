@@ -6,10 +6,9 @@ def boundary_update(fluid_particles,wall_particles,fluid_pressure,fluid_density,
 
     fluid_coords=fluid_particles.points   #fluid_particles and wall_particles are a point cloud objects
     wall_coords=wall_particles.points
+
+    #wall_particle_velocity2 = wall_particles.values
     
-    #print('wall coords')
-    #math.print(wall_coords)
-    #breakpoint()
     particle_coords=math.concat([fluid_coords,wall_coords],'particles')  # concatenating fluid coords and then wall coords
 
     distance_matrix_vec= particle_coords - math.rename_dims(particle_coords, 'particles', 'others') # contains both the x and y component of separation between particles
@@ -21,9 +20,11 @@ def boundary_update(fluid_particles,wall_particles,fluid_pressure,fluid_density,
 
     #Slicing the distance matrix of fluid neighbour of wall particles
     q=distance_matrix.particles[fluid_coords.particles.size:].others[:fluid_coords.particles.size]/h   
-
+    #print('in bound q')
+    #math.print(q)
     W=kernal_function(d,h,q)
-
+    #math.print(W)
+    #breakpoint()
     sum_pW = W.others*fluid_pressure.particles  # col-vector, each entry corresponding to each wall particle
 
     dry=distance_matrix_vec['y'].particles[fluid_coords.particles.size:].others[:fluid_coords.particles.size]*g 
@@ -45,9 +46,18 @@ def boundary_update(fluid_particles,wall_particles,fluid_pressure,fluid_density,
     wall_vel_x = math.where(sum_W!=0, math.divide_no_nan(-sum_vWx,sum_W), wall_particle_velocity['x'].values) 
     wall_vel_y = math.where(sum_W!=0, math.divide_no_nan(-sum_vWy,sum_W), wall_particle_velocity['y'].values)
     
-    wall_particle_velocity = stack([wall_vel_x, wall_vel_y], channel(vector='x,y'))
+    wall_particle_velocity_temp = stack([wall_vel_x, wall_vel_y], channel(vector='x,y'))
+        
+    #print('Inside bu ')
+    #math.print(wall_vel_x)
+    #äbreakpoint()
 
-    #
+    wall_particle_velocity = wall_particle_velocity.with_values(wall_particle_velocity_temp) # wall_particle_velocity is a point cloud
+    
+
+    #print('wall velocity')
+    #print(wall_particle_velocity['x'].values)
+    #breakpoint()
     #print('reached end of boundary update')
     #print('sum')
     #print(math.sum(wall_particle_pressure,'particles'))
@@ -56,8 +66,8 @@ def boundary_update(fluid_particles,wall_particles,fluid_pressure,fluid_density,
     #print('wall_particle_pressure: ')
     #math.print(wall_particle_pressure)
 
-    #print('wall_vel_y')
-    #math.print(wall_vel_y)
+    #print('pressure')
+    #math.print(wall_particle_pressure)
     #print('nnz')
     #print(np.count_nonzero(wall_vel_y))
 

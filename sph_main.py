@@ -9,7 +9,8 @@ from density_derivative import *
 import csv
 import pandas as pd
 from openpyxl import Workbook
-
+from phi import *
+#math.set_global_precision(64)
 def main():
     
     d=2 # dimension of the problem (indirectly dimension of the kernal function) 
@@ -17,6 +18,9 @@ def main():
     h=dx #cut off radius
     r_c=3*h   #Quintic Spline
     alpha=0.02 #viscosity coefficient value of water
+
+    ##############COMMENT LATER
+    r_c = 0.04
     
     #Generate paramters for dam break case
     fluid_particles,wall_particles, fluid_initial_density,wall_initial_density, \
@@ -25,7 +29,9 @@ def main():
     fluid_adiabatic_exp,wall_adiabatic_exp, fluid_c_0,wall_c_0,fluid_p_0,wall_p_0,fluid_Xi,wall_Xi,fluid_alpha,wall_alpha, \
     g, Height= dam_break_case(dx,d,alpha)
 
-    
+    #wall_particle_velocity = math.zeros(instance(wall_particles.points))
+    #print(fluid_particle_velocity)
+    #breakpoint()
     t=0
     n_dt=0
 
@@ -67,7 +73,7 @@ def main():
     print("Total number of fluid particles: "+ str(fluid_particles.elements.center.particles.size))
     print("Total number of wall particles: "+ str(wall_particles.elements.center.particles.size))
 
-    while n_dt == 0:  ##Replace with t < t_end once everything is working
+    while n_dt <=2 :  ##Replace with t < t_end once everything is working
 
         print("Simulation progress: "+ str((100*(t/t_end)))+ " Time step "+ str(n_dt))
         
@@ -85,33 +91,56 @@ def main():
 
             #VELOCITY DERIVATIVE FUNCTION
             fluid_particle_acceleration =calculate_acceleration(fluid_particles, wall_particles,wall_particle_velocity, fluid_particle_density,fluid_particle_pressure,wall_particle_pressure,fluid_particle_mass,fluid_particle_velocity,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx, fluid_alpha,fluid_c_0,g)
-
+        print('\n \n')
+        print('positions 1')
+        math.print(fluid_particles)       #pointcloud
+        print('velocity 1')
+        math.print(fluid_particle_velocity)    # pointcloud
+        print('acceleration 1')
+        print(fluid_particle_acceleration) # just a 2d vector
         #fluid_particle_velocity update
         fluid_particle_velocity = fluid_particle_velocity + (dt/2)*fluid_particle_acceleration #initial fluid_particle_velocity obtained from dam_break_case function
 
         fluid_particle_position = fluid_particles.elements.center #fluid_particles is a point cloud object
+        print('\n \n')
+        print('intermediate')
+        math.print(fluid_particles)
+        
         #fluid_particle_position_update
         fluid_particle_position = fluid_particle_position + (dt/2)*fluid_particle_velocity
+        fluid
 
-        #math.print(fluid_particle_position.values)
-
+        #breakpoint()
+   
         wall_particle_pressure, wall_particle_velocity = boundary_update(fluid_particles,wall_particles,fluid_particle_pressure,fluid_particle_density, fluid_particle_velocity,wall_particle_velocity,d,r_c,h,g)
+        #print('wall_velocity')
+        #math.print(wall_particle_pressure)
 
         drho_by_dt= calculate_density_derivative(fluid_particles, wall_particles, wall_particle_velocity, fluid_particle_density,fluid_particle_pressure,fluid_particle_mass,fluid_particle_velocity,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx)
         
+
         #Density Update: 
         fluid_particle_density = fluid_particle_density + (dt*drho_by_dt)
-
         #Pressure Update:  p_0[0] * ((particles[:len(fluid_particle_indices),5]/rho_0[0])**gamma[0] - 1 ) + Xi[0] 
         fluid_particle_pressure = fluid_p_0 *((fluid_particle_density/fluid_initial_density)**fluid_adiabatic_exp -1) + fluid_Xi
 
         #Useless if there is no wall velocity
         fluid_particle_position = fluid_particle_position + (dt/2)*fluid_particle_velocity
-        
+
+        wall_particle_pressure, wall_particle_velocity = boundary_update(fluid_particles,wall_particles,fluid_particle_pressure,fluid_particle_density, fluid_particle_velocity,wall_particle_velocity,d,r_c,h,g)
         #Calculate Acceleration
         fluid_particle_acceleration = calculate_acceleration(fluid_particles, wall_particles,wall_particle_velocity, fluid_particle_density,fluid_particle_pressure,wall_particle_pressure,fluid_particle_mass,fluid_particle_velocity,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx, fluid_alpha,fluid_c_0,g)
         #fluid_particle_velocity update
         fluid_particle_velocity = fluid_particle_velocity + (dt/2)*fluid_particle_acceleration
+
+        print('\n \n')
+        print('positions 2')
+        math.print(fluid_particles)
+        print('velocity 2')
+        math.print(fluid_particle_velocity)
+        print('acceleration 2')
+        print(fluid_particle_acceleration)
+        #breakpoint()
 
 if __name__== "__main__":
     main()

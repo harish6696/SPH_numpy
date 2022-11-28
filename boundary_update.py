@@ -2,7 +2,7 @@
 from kernal_function import *
 from phi.flow import *
 
-def boundary_update(fluid_particles,wall_particles,fluid_pressure,fluid_density,fluid_particle_velocity,wall_particle_velocity,d,r_c,h,g):
+def boundary_update(fluid_particles,wall_particles,fluid_pressure,fluid_density,d,r_c,h,g):
 
     fluid_coords=fluid_particles.points   #fluid_particles and wall_particles are a point cloud objects
     wall_coords=wall_particles.points
@@ -37,14 +37,15 @@ def boundary_update(fluid_particles,wall_particles,fluid_pressure,fluid_density,
     wall_particle_pressure= math.where(sum_W==0,0,sum_W)
     wall_particle_pressure= math.where(sum_W!=0,math.divide_no_nan((sum_rhorW+sum_pW),sum_W),sum_W)
 
-    fluid_particle_velocity=math.expand(fluid_particle_velocity.values, instance(fluid_particle_velocity))
+    fluid_particle_velocity=math.expand(fluid_particles.values, instance(fluid_particles))
+    wall_particle_velocity=math.expand(wall_particles.values, instance(wall_particles))
 
     sum_vWx = W.others*fluid_particle_velocity['x'].particles
     sum_vWy = W.others*fluid_particle_velocity['y'].particles
     
     #sum_W and wall_particle_velocity['x' or 'y'] have the same dimensions i.e. both are a column vector with particle dimension
-    wall_vel_x = math.where(sum_W!=0, math.divide_no_nan(-sum_vWx,sum_W), wall_particle_velocity['x'].values) 
-    wall_vel_y = math.where(sum_W!=0, math.divide_no_nan(-sum_vWy,sum_W), wall_particle_velocity['y'].values)
+    wall_vel_x = math.where(sum_W!=0, math.divide_no_nan(-sum_vWx,sum_W), wall_particle_velocity['x']) 
+    wall_vel_y = math.where(sum_W!=0, math.divide_no_nan(-sum_vWy,sum_W), wall_particle_velocity['y'])
     
     wall_particle_velocity_temp = stack([wall_vel_x, wall_vel_y], channel(vector='x,y'))
         
@@ -52,7 +53,7 @@ def boundary_update(fluid_particles,wall_particles,fluid_pressure,fluid_density,
     #math.print(wall_vel_x)
     #äbreakpoint()
 
-    wall_particle_velocity = wall_particle_velocity.with_values(wall_particle_velocity_temp) # wall_particle_velocity is a point cloud
+    wall_particles = wall_particles.with_values(wall_particle_velocity_temp) # wall_particle_velocity is a point cloud
     
 
     #print('wall velocity')
@@ -73,7 +74,7 @@ def boundary_update(fluid_particles,wall_particles,fluid_pressure,fluid_density,
 
 
     #breakpoint()
-    return wall_particle_pressure, wall_particle_velocity
+    return wall_particle_pressure, wall_particles
 
 
 

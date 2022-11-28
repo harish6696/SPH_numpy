@@ -29,9 +29,11 @@ coords=math.concat([fluid_coords,wall_coords],'particles')
 
 fluid_velocity = fluid_particles * (0, 0)
     
+fluid_particles = fluid_particles.with_values(fluid_velocity.values)
 
+math.print(fluid_particles)
 
-
+breakpoint()
 #math.print(fluid_velocity)
 
 #ACTUALLY IT IS PARTICLE VELOCITY
@@ -39,9 +41,9 @@ fluid_velocity_temp= tensor([(1, 0), (10, 2), (0, 12),(1,1),(3,4),(5,5)], instan
 #fluid_velocity['x'].values = fluid_velocity_temp['x']
 fluid_particles = fluid_particles.with_values(fluid_velocity_temp)
 
-math.print(fluid_particles.values)
+math.print(fluid_particles)
 
-breakpoint()
+
 
 fluid_relative_velocity=fluid_velocity - math.rename_dims(fluid_velocity,'particles', 'others')
 

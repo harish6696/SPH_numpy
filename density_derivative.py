@@ -2,7 +2,7 @@
 from kernal_function import *
 from phi.flow import *
 
-def calculate_density_derivative(fluid_particles, wall_particles, wall_particle_velocity, fluid_particle_density,fluid_pressure,fluid_particle_mass,fluid_particle_velocity,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx):
+def calculate_density_derivative(fluid_particles, wall_particles, fluid_particle_density,fluid_pressure,fluid_particle_mass,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx):
     #Note: No wall_particle_density and wall_particle_mass in input arguments. It is expected to be zero initially
 
     fluid_coords=fluid_particles.points   #fluid_particles and boundary_particles are a point cloud objects
@@ -11,7 +11,10 @@ def calculate_density_derivative(fluid_particles, wall_particles, wall_particle_
     
     #wall_particle_velocity= wall_particles *(0,0) ####QQQQQQQQ DOES THIS HAVE A DIMENSION NAMED PARTICLES ? (same q for fluid_particle_velocity)
 
-    particle_velocity=math.concat([fluid_particle_velocity.values,wall_particle_velocity.values], dim='particles') 
+    fluid_particle_velocity=math.expand(fluid_particles.values, instance(fluid_particles)) # adding particle dimension to fluid_particles.values
+    wall_particle_velocity = math.expand(wall_particles.values, instance(wall_particles))
+
+    particle_velocity=math.concat([fluid_particle_velocity,wall_particle_velocity], dim='particles') 
 
     wall_particle_density=math.rename_dims(math.zeros(instance(wall_coords)),'particles','others')
     wall_particle_mass=math.rename_dims(math.zeros(instance(wall_coords)),'particles','others')

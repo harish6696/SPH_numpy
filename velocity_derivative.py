@@ -1,7 +1,7 @@
 from kernal_function import *
 from phi.flow import *
 
-def calculate_acceleration(fluid_particles, wall_particles,wall_particle_velocity ,fluid_particle_density,fluid_particle_pressure,wall_particle_pressure,fluid_particle_mass,fluid_particle_velocity,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx, fluid_alpha,fluid_c_0,g):
+def calculate_acceleration(fluid_particles, wall_particles ,fluid_particle_density,fluid_particle_pressure,wall_particle_pressure,fluid_particle_mass,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx, fluid_alpha,fluid_c_0,g):
 
     dx=h; epsilon= 0.01 # parameter to avoid zero denominator 
 
@@ -20,13 +20,16 @@ def calculate_acceleration(fluid_particles, wall_particles,wall_particle_velocit
     wall_particle_mass=math.rename_dims(math.zeros(instance(wall_coords)),'particles','others')
     ###CHECK THIS IF REQUIRED WHILE RUNNING THE CODE
     
+    fluid_particle_velocity=math.expand(fluid_particles.values, instance(fluid_particles))
+    wall_particle_velocity=math.expand(wall_particles.values, instance(wall_particles))
+
     fluid_particle_velocity = math.rename_dims(fluid_particle_velocity, 'particles', 'others')
     wall_particle_velocity=math.rename_dims(wall_particle_velocity,'particles','others')
 
     fluid_particle_pressure = math.rename_dims(fluid_particle_pressure, 'particles', 'others')
     wall_particle_pressure=math.rename_dims(wall_particle_pressure,'particles','others')
     
-    particle_velocity = math.concat([fluid_particle_velocity.values,wall_particle_velocity.values], dim='others')
+    particle_velocity = math.concat([fluid_particle_velocity,wall_particle_velocity], dim='others')
     particle_density= math.concat([fluid_particle_density,wall_particle_density], dim='others') #1D Scalar array of densities of all particles
     particle_mass= math.concat([fluid_particle_mass,wall_particle_mass], dim='others')
     particle_pressure=math.concat([fluid_particle_pressure,wall_particle_pressure], dim='others')

@@ -1,11 +1,16 @@
 from phi.flow import *
 
-def time_step_size(fluid_c_0,fluid_particle_velocity, wall_particle_velocity,h,fluid_alpha,d,g):
+def time_step_size(fluid_c_0,fluid_particles, wall_particles,h,fluid_alpha,d,g):
 
     #dt=np.zeros(3)   # take the minimum out of these 3
+    print('inside timestep')
+
+    fluid_particle_velocity=math.expand(fluid_particles.values, instance(fluid_particles)) # adding particle dimension to fluid_particles.values
+    wall_particle_velocity = math.expand(wall_particles.values, instance(wall_particles))
     
     particle_velocity= math.concat([fluid_particle_velocity,wall_particle_velocity], 'particles')
-    vmax_magnitude= math.max(math.vec_length(particle_velocity.values))
+ 
+    vmax_magnitude= math.max(math.vec_length(particle_velocity))
 
     c_max= fluid_c_0  # wall_c_0 =0 so no point in taking the max out of them
 

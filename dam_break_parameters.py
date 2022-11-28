@@ -22,7 +22,10 @@ def dam_break_case(dx, d, alph):
     fluid_coords =pack_dims(math.meshgrid(x=1, y=3), 'x,y', instance('particles')) * (0.2/1, 0.12/3) + (0.003,0.003)
     
     fluid_particles = PointCloud(Sphere(fluid_coords, radius=0.002))  #"""is this radius only for visualization?????????????"""
-    fluid_velocity = fluid_particles * (0, 0)
+    #math.print(math.zeros(instance(fluid_particles.elements.center)))
+    
+    fluid_velocity = fluid_particles * (0, 0)  # can we remove this unnecessary point cloud creation ?
+    fluid_particles = fluid_particles.with_values(fluid_velocity.values)  #fluid particles is a point cloud with elements as points of fluid coordinates and values as velocity
 
     single_fluid_particle_mass = fluid_initial_density * dx**d
     fluid_particle_mass = math.ones(instance(fluid_coords))*single_fluid_particle_mass
@@ -58,8 +61,8 @@ def dam_break_case(dx, d, alph):
     #math.print(wall_coords)
     #breakpoint()
 
-    wall_prescribed_velocity = wall_particles * (0, 0)
     wall_initial_velocity=wall_particles * (0, 0)
+    wall_particles = wall_particles.with_values(wall_initial_velocity.values) 
     wall_pressure=math.zeros(instance(wall_coords)) 
     wall_density=math.zeros(instance(wall_coords))  
 
@@ -71,6 +74,6 @@ def dam_break_case(dx, d, alph):
 
     return fluid_particles,wall_particles, fluid_initial_density,wall_initial_density, \
     fluid_density, wall_density,fluid_pressure, wall_pressure,  \
-    fluid_velocity,wall_initial_velocity, wall_prescribed_velocity, fluid_particle_mass, \
+    fluid_particle_mass, \
     fluid_adiabatic_exp,wall_adiabatic_exp, fluid_c_0,wall_c_0,fluid_p_0,wall_p_0,fluid_Xi,wall_Xi,fluid_alpha,wall_alpha, \
     g, height

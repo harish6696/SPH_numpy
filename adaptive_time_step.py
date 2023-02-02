@@ -1,9 +1,8 @@
-from phi.flow import *
+#from phi.flow import *
+from phi.jax.flow import *
+#math.set_global_precision(32)
 
 def time_step_size(fluid_c_0,fluid_particles, wall_particles,h,fluid_alpha,d,g):
-
-    #dt=np.zeros(3)   # take the minimum out of these 3
-    print('inside timestep')
 
     fluid_particle_velocity=math.expand(fluid_particles.values, instance(fluid_particles)) # adding particle dimension to fluid_particles.values
     wall_particle_velocity = math.expand(wall_particles.values, instance(wall_particles))

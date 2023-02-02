@@ -1,6 +1,7 @@
 ############# MOVING WALL NOT IMPLEMENTED i.e. wall_prescribed_velocity =0 ##################
 from kernal_function import *
-from phi.flow import *
+#from phi.flow import *
+from phi.jax.flow import *
 
 def boundary_update(fluid_particles,wall_particles,fluid_pressure,fluid_density,d,r_c,h,g):
 
@@ -20,11 +21,9 @@ def boundary_update(fluid_particles,wall_particles,fluid_pressure,fluid_density,
 
     #Slicing the distance matrix of fluid neighbour of wall particles
     q=distance_matrix.particles[fluid_coords.particles.size:].others[:fluid_coords.particles.size]/h   
-    #print('in bound q')
-    #math.print(q)
+
     W=kernal_function(d,h,q)
-    #math.print(W)
-    #breakpoint()
+
     sum_pW = W.others*fluid_pressure.particles  # col-vector, each entry corresponding to each wall particle
 
     dry=distance_matrix_vec['y'].particles[fluid_coords.particles.size:].others[:fluid_coords.particles.size]*g 
@@ -49,31 +48,8 @@ def boundary_update(fluid_particles,wall_particles,fluid_pressure,fluid_density,
     
     wall_particle_velocity_temp = stack([wall_vel_x, wall_vel_y], channel(vector='x,y'))
         
-    #print('Inside bu ')
-    #math.print(wall_vel_x)
-    #äbreakpoint()
-
     wall_particles = wall_particles.with_values(wall_particle_velocity_temp) # wall_particle_velocity is a point cloud
     
-
-    #print('wall velocity')
-    #print(wall_particle_velocity['x'].values)
-    #breakpoint()
-    #print('reached end of boundary update')
-    #print('sum')
-    #print(math.sum(wall_particle_pressure,'particles'))
-    #print('nnz')
-    #print(np.count_nonzero(numpy.asarray(wall_particle_pressure)))
-    #print('wall_particle_pressure: ')
-    #math.print(wall_particle_pressure)
-
-    #print('pressure')
-    #math.print(wall_particle_pressure)
-    #print('nnz')
-    #print(np.count_nonzero(wall_vel_y))
-
-
-    #breakpoint()
     return wall_particle_pressure, wall_particles
 
 

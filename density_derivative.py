@@ -1,6 +1,8 @@
 
 from kernal_function import *
-from phi.flow import *
+#from phi.flow import *
+from phi.jax.flow import *
+#math.set_global_precision(32)
 
 def calculate_density_derivative(fluid_particles, wall_particles, fluid_particle_density,fluid_pressure,fluid_particle_mass,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx):
     #Note: No wall_particle_density and wall_particle_mass in input arguments. It is expected to be zero initially
@@ -25,7 +27,7 @@ def calculate_density_derivative(fluid_particles, wall_particles, fluid_particle
     particle_density= math.concat([fluid_particle_density,wall_particle_density], dim='others') #1D Scalar array of densities of all particles (now it is a row vector)
     particle_mass= math.concat([fluid_particle_mass,wall_particle_mass], dim='others')
     
-        #Compute distance between all particles 
+    #Compute distance between all particles 
     distance_matrix_vec= particle_coords - math.rename_dims(particle_coords, 'particles', 'others') # contains both the x and y component of separation between particles
     distance_matrix = math.vec_length(distance_matrix_vec) # contains magnitude of distance between ALL particles
     
@@ -44,7 +46,7 @@ def calculate_density_derivative(fluid_particles, wall_particles, fluid_particle
     fluid_particle_relative_dist=distance_matrix.particles[:fluid_coords.particles.size].others[:]
     dvx=math.where(fluid_particle_relative_dist>r_c,0,dvx) # relative x-velocity between a fluid particle and its neighbour
     dvy=math.where(fluid_particle_relative_dist>r_c,0,dvy)
-
+ 
     #Do all the cut off things before the final cut off for distance matrix
     distance_matrix_vec= math.where(distance_matrix > r_c, 0, distance_matrix_vec)
     distance_matrix = math.where(distance_matrix > r_c, 0, distance_matrix)   # Stores the distance between neighbours which are inside cutoff radius
@@ -72,10 +74,13 @@ def calculate_density_derivative(fluid_particles, wall_particles, fluid_particle
 
     ######'fluid_pressure' is for each fluid particle 
     fluid_particle_wall_neighbour_density_term=fluid_initial_density * ((fluid_pressure - fluid_Xi) / fluid_p_0 + 1)**(1/fluid_adiabatic_exp)
+    helper_matrix = distance_matrix.particles[:fluid_coords.particles.size].others[fluid_coords.particles.size:] 
+    helper_matrix = math.where(helper_matrix!=0, 1 , helper_matrix)  # technically called adjacency matrix
+    
     #ALL boundary particle neighbours for a given fluid particle will have same density 
-    fluid_particle_wall_neighbour_density=math.where(fluid_particle_wall_neighbour_density!=0,fluid_particle_wall_neighbour_density_term,fluid_particle_wall_neighbour_density)
-    fluid_particle_wall_neighbour_mass =math.where(fluid_particle_wall_neighbour_mass!=0,(fluid_initial_density*dx*dx),fluid_particle_wall_neighbour_mass)
-
+    fluid_particle_wall_neighbour_density = helper_matrix * fluid_particle_wall_neighbour_density_term
+    fluid_particle_wall_neighbour_mass =math.where(helper_matrix!=0,(fluid_initial_density*dx*dx),fluid_particle_wall_neighbour_mass)
+    
     #joining the density and mass of the fluid and wall particle back together
     fluid_particle_neighbour_density=math.concat([fluid_particle_fluid_neighbour_density, fluid_particle_wall_neighbour_density], 'others')
     fluid_particle_neighbour_mass =math.concat([fluid_particle_fluid_neighbour_mass, fluid_particle_wall_neighbour_mass], 'others')
@@ -84,12 +89,10 @@ def calculate_density_derivative(fluid_particles, wall_particles, fluid_particle
     dot_product_result=(dvx*Fab_x)+(dvy*Fab_y)
 
     #Fluid_particle_density is a vector, each row of result is multiplied by the corresponding term of fluid_particle_density and then Sum along each row to get the result(drho_by_dt) for each fluid particle 
-    
     #######CHECK THIS below line WHILE RUNNING THE FULL CODE
     fluid_particle_density= math.rename_dims(fluid_particle_density,'others','particles') 
-    
-    drho_by_dt=math.sum((neighbour_mass_by_density_ratio*dot_product_result)*fluid_particle_density,'others')
 
+    drho_by_dt=math.sum((neighbour_mass_by_density_ratio*dot_product_result)*fluid_particle_density,'others')
     #drho_by_dt is calculated only for fluid particles
     return drho_by_dt
 

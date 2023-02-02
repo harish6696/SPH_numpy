@@ -1,18 +1,19 @@
 
 import numpy as np
-from phi.flow import *
+#from phi.flow import *
+from phi.jax.flow import *
 #math.set_global_precision(32)
 
 def kernal_function(d,h,q):
     # Quintic Spline used as Weighting function
     # cutoff radius r_c = 3 * h;
     # normalisation parameter alpha_d
-    if d == 2:
-        alpha_d = 0.004661441847880 / (h * h)
-    elif d == 3:
-        alpha_d = 1 / (120 * math.pi * (h**3)) # for 3D
-    elif d == 1:
-        alpha_d = 1 / (120 * h)
+    #if d == 2:
+    alpha_d = 0.004661441847880 / (h * h)
+    # elif d == 3:
+    #     alpha_d = 1 / (120 * math.pi * (h**3)) # for 3D
+    # elif d == 1:
+    #     alpha_d = 1 / (120 * h)
     #print('q inside kernal')
     #math.print(q)
     # Weighting function
@@ -34,13 +35,13 @@ def kernal_function(d,h,q):
 
 def kernal_derivative(d, h, q):
     # normalisation parameter
-    if d == 2:      # for 2D
-        alpha_d = -0.0233072092393989 / (h * h)
+    #if d == 2:      # for 2D
+    alpha_d = -0.0233072092393989 / (h * h)
         #print(alpha_d)
-    elif d == 3:
-        alpha_d = -5 / (120 * math.pi * (h**3)) # for 3D
-    elif d == 1:
-        alpha_d = -5 / (120 * h)
+    # elif d == 3:
+    #     alpha_d = -5 / (120 * math.pi * (h**3)) # for 3D
+    # elif d == 1:
+    #     alpha_d = -5 / (120 * h)
     
     # Derivative of Weighting function
     #der_W = math.zeros(instance(q))

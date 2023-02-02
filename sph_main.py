@@ -15,47 +15,23 @@ from phi.jax.flow import *
 import matplotlib
 #math.set_global_precision(64)
 
-
-#starts from n_dt==2
-
 def step(fluid_particles,wall_particles,fluid_particle_acceleration,fluid_particle_pressure,wall_particle_pressure,fluid_initial_density,fluid_particle_density,wall_particle_density, fluid_particle_mass, \
     fluid_adiabatic_exp, fluid_c_0,fluid_p_0,fluid_Xi,fluid_alpha, dt,n_dt,d,r_c,h,g,dx):
 
     fluid_particle_velocity=math.expand(fluid_particles.values, instance(fluid_particles))
 
-    #print('velocities')
-    #print('timestep: '+ str(n_dt))
-    #math.print(fluid_particle_velocity)
-
     fluid_particle_velocity = fluid_particle_velocity + (dt/2)*fluid_particle_acceleration #initial fluid_particle_velocity obtained from dam_break_case function
     fluid_particle_position = fluid_particles.points + (dt/2)*fluid_particle_velocity
 
-    # print('fluid_pos after acc calc 1')
     #update the point cloud. positions are stored in elements of the pointcloudand velocities are stored in values of the pointcloud
     fluid_particles = fluid_particles.with_values(fluid_particle_velocity)
     fluid_particles = fluid_particles.with_elements(fluid_particle_position)
     
-    # math.print(fluid_particles.points)
-    # print('\n')
 
     wall_particle_pressure, wall_particles = boundary_update(fluid_particles,wall_particles,fluid_particle_pressure,fluid_particle_density,d,r_c,h,g)
     
-    #print(' regular boundary update completed')
-    
     drho_by_dt= calculate_density_derivative(fluid_particles, wall_particles, fluid_particle_density,fluid_particle_pressure,fluid_particle_mass,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx)
     
-    #print(drho_by_dt)
-    #print(n_dt)
-    #breakpoint()
-
-    # if(drho_by_dt.any!=0.0):
-    # print('nonzeo time step is '+str(n_dt))     
-    # print('density derivative')
-    # math.print(drho_by_dt)
-    # print('density derivative')
-    # math.print(drho_by_dt)
-    # print('\n')
-
     #Density Update: 
     fluid_particle_density = fluid_particle_density + (dt*drho_by_dt)
 
@@ -65,20 +41,14 @@ def step(fluid_particles,wall_particles,fluid_particle_acceleration,fluid_partic
     fluid_particle_position = fluid_particles.points + (dt/2)*fluid_particle_velocity
     # print('fluid_pos before acc calc 2')    
     fluid_particles = fluid_particles.with_elements(fluid_particle_position)
-    # math.print(fluid_particles.points)
-    # print('\n')
-    # breakpoint()
 
     wall_particle_pressure, wall_particles= boundary_update(fluid_particles,wall_particles,fluid_particle_pressure,fluid_particle_density,d,r_c,h,g)
-
 
     #Calculate Acceleration
     fluid_particle_acceleration = calculate_acceleration(fluid_particles, wall_particles, fluid_particle_density,fluid_particle_pressure,wall_particle_pressure,fluid_particle_mass,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx, fluid_alpha,fluid_c_0,g,n_dt)
     
     fluid_particle_velocity = fluid_particle_velocity + (dt/2)*fluid_particle_acceleration
     fluid_particles = fluid_particles.with_values(fluid_particle_velocity)
-
-    
 
     return fluid_particles,wall_particles, fluid_particle_acceleration, fluid_particle_pressure, fluid_particle_density, wall_particle_pressure
 
@@ -91,10 +61,7 @@ def main():
     h=dx #cut off radius
     r_c=3*h   #Quintic Spline
     alpha=0.02 #viscosity coefficient value of water
-
-    ##############COMMENT LATER
-    #r_c = 0.04
-    
+   
     #Generate paramters for dam break case
     # fluid_particles,wall_particles, fluid_initial_density,wall_initial_density, \
     # fluid_particle_density,wall_particle_density, fluid_particle_pressure, wall_particle_pressure,  \
@@ -108,11 +75,6 @@ def main():
     fluid_adiabatic_exp,wall_adiabatic_exp, fluid_c_0,wall_c_0,fluid_p_0,wall_p_0,fluid_Xi,wall_Xi,fluid_alpha,wall_alpha, \
     g, Height= free_fall_case(dx,d,alpha)
 
-    
-
-    #wall_particle_velocity = math.zeros(instance(wall_particles.points))
-    #print(fluid_particle_velocity)boundary_update
-    #breakpoint()
     t=0
     n_dt=0
 
@@ -136,13 +98,11 @@ def main():
     #H = np.max(particles[:len(fluid_particle_indices),1])-np.min(particles[:len(fluid_particle_indices),1])+dx
     H=math.max(fluid_particles.points['y'])-math.min(fluid_particles.points['y'])+dx
     print('Actual height of water column is: ' +str(H))
-    #breakpoint()
     # if abs(H - Height) >= 1.0e-6:
     #     print("wrong height specified,please input dx again")
     #     exit()
     
-    #reference_values
-    
+    #reference_value
     v_ref = math.sqrt(2 *abs(g) * H )
     t_ref = H / v_ref 
 
@@ -153,7 +113,7 @@ def main():
     print("Total number of wall particles: "+ str(wall_particles.elements.center.particles.size))
     
     fluid_traj=[]
-    while n_dt <10001 :  ##Replace with t < t_end once everything is working
+    while t <=t_end :  ##Replace with t < t_end once everything is working
 
         print("Simulation progress: "+ str((100*(t/t_end)))+ " Time step "+ str(n_dt))
         
@@ -188,14 +148,16 @@ def main():
                 df_y.to_excel(writer_y, sheet_name="Sheet",header=None, startcol=writer_y.sheets["Sheet"].max_column,index=False)
                 writer_y.save()
         
+        #*******************************************************************************************
+        # Step-Function: Calculate the parameters for one step
+        #*******************************************************************************************
         fluid_particles,wall_particles, fluid_particle_acceleration, fluid_particle_pressure, fluid_particle_density, wall_particle_pressure = step(fluid_particles,wall_particles,fluid_particle_acceleration,fluid_particle_pressure,wall_particle_pressure,fluid_initial_density,fluid_particle_density,wall_particle_density, fluid_particle_mass, \
         fluid_adiabatic_exp, fluid_c_0,fluid_p_0,fluid_Xi,fluid_alpha, dt,n_dt, d,r_c,h,g,dx)
-        #math.print(fluid_particles)
-
-        fluid_traj.append(fluid_particles.points)
+        #*******************************************************************************************
         
-       
-            
+        
+        #fluid_traj.append(fluid_particles.points)
+        
         if(n_dt%100==0):
             pos_x = numpy.asarray(math.concat([fluid_particles.points['x'],wall_particles.points['x']],'particles'))
             pos_y = numpy.asarray(math.concat([fluid_particles.points['y'],wall_particles.points['y']],'particles'))
@@ -209,7 +171,12 @@ def main():
             with pd.ExcelWriter("y_pos.xlsx",mode="a",engine="openpyxl",if_sheet_exists="overlay") as writer_y:
                 df_y.to_excel(writer_y, sheet_name="Sheet",header=None, startcol=writer_y.sheets["Sheet"].max_column,index=False)
                 writer_y.save()
-    #0xs = math.stack(fluid_particles, batch('time'))
+    
+    
+    #**************************
+    # Save animation
+    #**************************
+    #xs = math.stack(fluid_particles, batch('time'))
     #a:matplotlib.animation.FuncAnimation=vis.plot(fluid_traj ,animate ='list')
     #print('\n \n ')
     #print(a)

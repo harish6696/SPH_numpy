@@ -1,7 +1,7 @@
 
 import numpy as np
 #from phi.flow import *
-from phi.jax.flow import *
+from phi.flow import *
 #math.set_global_precision(32)
 
 def kernal_function(d,h,q):

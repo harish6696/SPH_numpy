@@ -1,7 +1,7 @@
 
 from kernal_function import *
 #from phi.flow import *
-from phi.jax.flow import *
+from phi.flow import *
 #math.set_global_precision(32)
 
 def calculate_density_derivative(fluid_particles, wall_particles, fluid_particle_density,fluid_pressure,fluid_particle_mass,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx):

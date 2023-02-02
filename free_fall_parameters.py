@@ -1,6 +1,6 @@
 #from create_particles import *   #rendered useless
 #from phi.flow import *
-from phi.jax.flow import *
+from phi.flow import *
 #math.set_global_precision(64)
 def free_fall_case(dx, d, alph):
     width = dx * np.ceil(1.61 / dx)  # width=1.614 for dx= 0.006
@@ -27,7 +27,7 @@ def free_fall_case(dx, d, alph):
     #fluid_coords = pack_dims(math.meshgrid(x=25, y=1), 'x,y', instance('particles')) * (0.15/25, 1) + (0.003,0.003)  # 5000 fluid particle coordinates created     
     #fluid_coords =pack_dims(math.meshgrid(x=1, y=3), 'x,y', instance('particles')) * (0.2/1, 0.12/3) + (0.003,0.003)
     
-    fluid_particles = PointCloud(Sphere(fluid_coords, radius=0.1))  #"""is this radius only for visualization?????????????"""
+    fluid_particles = PointCloud(Sphere(fluid_coords, radius=0.1), color='#000000')  #"""is this radius only for visualization?????????????"""
     #math.print(math.zeros(instance(fluid_particles.elements.center)))
     
     fluid_velocity = fluid_particles * (0.0, 0.0)  # can we remove this unnecessary point cloud creation ?

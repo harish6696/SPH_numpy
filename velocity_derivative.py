@@ -1,6 +1,6 @@
 from kernal_function import *
 #from phi.flow import *
-from phi.jax.flow import *
+from phi.flow import *
 #math.set_global_precision(32)
 def calculate_acceleration(fluid_particles, wall_particles ,fluid_particle_density,fluid_particle_pressure,wall_particle_pressure,fluid_particle_mass,fluid_initial_density,fluid_Xi,fluid_adiabatic_exp,fluid_p_0, h, d, r_c, dx, fluid_alpha,fluid_c_0,g,n_dt):
 

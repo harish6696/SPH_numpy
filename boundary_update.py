@@ -1,7 +1,7 @@
 ############# MOVING WALL NOT IMPLEMENTED i.e. wall_prescribed_velocity =0 ##################
 from kernal_function import *
 #from phi.flow import *
-from phi.jax.flow import *
+from phi.flow import *
 
 def boundary_update(fluid_particles,wall_particles,fluid_pressure,fluid_density,d,r_c,h,g):
 

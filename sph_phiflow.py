@@ -14,13 +14,12 @@ def leapfrog_sph(fluid: PointCloud,
                  fluid_adiabatic_exp,
                  fluid_c_0,
                  fluid_p_0,
-                 fluid_Xi,
+                 fluid_xi,
                  fluid_alpha,
-                 r_c,
-                 h,
-                 gravity: Tensor,
-                 dx):
+                 max_dist,
+                 gravity: Tensor):
     """
+    Compute one SPH time step using leapfrog Euler.
 
     Args:
         fluid:
@@ -34,43 +33,42 @@ def leapfrog_sph(fluid: PointCloud,
         fluid_adiabatic_exp:
         fluid_c_0:
         fluid_p_0:
-        fluid_Xi:
+        fluid_xi:
         fluid_alpha:
-        r_c:
-        h:
-        gravity:
-        dx:
+        max_dist:
+        gravity: Gravity vector as `Tensor`
 
     Returns:
 
     """
     fluid = fluid.with_values(math.expand(fluid.values, instance(fluid)))
     wall = wall.with_values(math.expand(wall.values, instance(wall)))
-    dt = time_step_size(fluid_c_0, fluid, wall, h, fluid_alpha, gravity)
+    dt = time_step_size(fluid_c_0, fluid, wall, fluid_alpha, gravity)
     if prev_fluid_acc is None:
-        prev_fluid_acc = calculate_acceleration(fluid, wall, d_fluid, p_fluid, p_wall, mass, d0_fluid, fluid_Xi, fluid_adiabatic_exp, fluid_p_0, h, r_c, fluid_alpha, fluid_c_0, gravity)
+        prev_fluid_acc = calculate_acceleration(fluid, wall, d_fluid, p_fluid, p_wall, mass, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, max_dist, fluid_alpha, fluid_c_0, gravity)
     # --- Integrate velocity & position ---
     v_fluid = fluid.values + dt / 2 * prev_fluid_acc
     x_fluid = fluid.elements.shifted(dt / 2 * v_fluid)
     fluid = fluid.with_elements(x_fluid).with_values(v_fluid)
     # --- Pressure ---
-    p_wall, wall = boundary_update(fluid, wall, p_fluid, d_fluid, r_c, h, gravity)
-    drho_by_dt = calculate_density_derivative(fluid, wall, d_fluid, p_fluid, mass, d0_fluid, fluid_Xi, fluid_adiabatic_exp, fluid_p_0, h, r_c, dx)
-    d_fluid = d_fluid + (dt * drho_by_dt)
-    p_fluid = fluid_p_0 * ((d_fluid / d0_fluid) ** fluid_adiabatic_exp - 1) + fluid_Xi
+    p_wall, wall = boundary_update(fluid, wall, p_fluid, d_fluid, max_dist, gravity)
+    d_rho_by_dt = calculate_density_derivative(fluid, wall, d_fluid, p_fluid, mass, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, max_dist)
+    d_fluid = d_fluid + (dt * d_rho_by_dt)
+    p_fluid = fluid_p_0 * ((d_fluid / d0_fluid) ** fluid_adiabatic_exp - 1) + fluid_xi
     # --- Integrate position ---
     fluid = fluid.with_elements(fluid.elements.shifted(.5 * dt * v_fluid))
     # --- Compute new acceleration and integrate velocity ---
-    p_wall, wall = boundary_update(fluid, wall, p_fluid, d_fluid, r_c, h, gravity)  # ToDo This would require a new distance matrix since fluid positions were altered
-    fluid_acc = calculate_acceleration(fluid, wall, d_fluid, p_fluid, p_wall, mass, d0_fluid, fluid_Xi, fluid_adiabatic_exp, fluid_p_0, h, r_c, fluid_alpha, fluid_c_0, gravity)
+    p_wall, wall = boundary_update(fluid, wall, p_fluid, d_fluid, max_dist, gravity)  # ToDo This would require a new distance matrix since fluid positions were altered
+    fluid_acc = calculate_acceleration(fluid, wall, d_fluid, p_fluid, p_wall, mass, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, max_dist, fluid_alpha, fluid_c_0, gravity)
     v_fluid = v_fluid + (dt / 2) * fluid_acc
     return fluid.with_values(v_fluid), wall, fluid_acc, p_fluid, d_fluid, p_wall
 
 
-def boundary_update(fluid: PointCloud, wall, p_fluid, d_fluid, max_dist, h, gravity: Tensor):
+def boundary_update(fluid: PointCloud, wall, p_fluid, d_fluid, max_dist, gravity: Tensor):
     x = concat([fluid.points, wall.points], 'particles')
     distances_vec = -math.pairwise_distances(x, max_dist).particles[fluid.particles.size:].others[:fluid.particles.size]  # fluid neighbors of wall particles
     distances = math.vec_length(distances_vec)
+    h = 2 * fluid.elements.bounding_radius()
     w = kernel_function(h, distances / h)
     sum_p_w = w.others * p_fluid.particles
     sum_density_r_w = (distances_vec['y'] * gravity['y'] * w).others * d_fluid.particles
@@ -82,7 +80,7 @@ def boundary_update(fluid: PointCloud, wall, p_fluid, d_fluid, max_dist, h, grav
     return p_wall, wall
 
 
-def calculate_density_derivative(fluid, wall, d_fluid, p_fluid, m_fluid, d0_fluid, fluid_Xi, fluid_adiabatic_exp, fluid_p_0, h, r_c, dx):
+def calculate_density_derivative(fluid, wall, d_fluid, p_fluid, m_fluid, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, r_c):
     # wall_density=0, wall_mass=0 expected initially
     x = concat([fluid.points, wall.points], 'particles')
     v = concat([fluid.values, wall.values], 'particles')
@@ -114,17 +112,15 @@ def calculate_density_derivative(fluid, wall, d_fluid, p_fluid, m_fluid, d0_flui
     distances_vec = math.where(distances > r_c, 0, distances_vec)
     distances = math.where(distances > r_c, 0, distances)  # Stores the distance between neighbours which are inside cutoff radius
 
-    # Slicing the distance matrix of ALL neighbour of fluid particles
-    q = distances.particles[:fluid.particles.size].others[:] / h
-
-    DWab = kernel_derivative(h, q) / h
+    h = 2 * fluid.elements.bounding_radius()
+    d_w_ab = kernel_derivative(h, distances.particles[:fluid.particles.size] / h) / h  # Consider all neighbours of fluid particles
 
     drx = distances_vec['x'].particles[:fluid.particles.size].others[:]
     dry = distances_vec['y'].particles[:fluid.particles.size].others[:]
 
     mod_dist = (distances.particles[:fluid.particles.size].others[:])
-    Fab_x = math.where(mod_dist != 0, math.divide_no_nan(drx, mod_dist) * DWab, drx)
-    Fab_y = math.where(mod_dist != 0, math.divide_no_nan(dry, mod_dist) * DWab, dry)
+    fab_x = math.where(mod_dist != 0, math.divide_no_nan(drx, mod_dist) * d_w_ab, drx)
+    fab_y = math.where(mod_dist != 0, math.divide_no_nan(dry, mod_dist) * d_w_ab, dry)
 
     fluid_neighbour_density = particle_neighbour_density.particles[:fluid.particles.size].others[:]
     fluid_neighbour_mass = particle_neighbour_mass.particles[:fluid.particles.size].others[:]
@@ -135,21 +131,22 @@ def calculate_density_derivative(fluid, wall, d_fluid, p_fluid, m_fluid, d0_flui
     fluid_fluid_neighbour_mass = fluid_neighbour_mass.particles[:].others[:fluid.particles.size]
     fluid_wall_neighbour_mass = fluid_neighbour_mass.particles[:].others[fluid.particles.size:]
 
-    ######'fluid_pressure' is for each fluid particle
-    fluid_particle_wall_neighbour_density_term = d0_fluid * ((p_fluid - fluid_Xi) / fluid_p_0 + 1) ** (1 / fluid_adiabatic_exp)
+    # fluid_pressure is for each fluid particle
+    fluid_particle_wall_neighbour_density_term = d0_fluid * ((p_fluid - fluid_xi) / fluid_p_0 + 1) ** (1 / fluid_adiabatic_exp)
     helper_matrix = distances.particles[:fluid.particles.size].others[fluid.particles.size:]
     helper_matrix = math.where(helper_matrix != 0, 1, helper_matrix)  # technically called adjacency matrix
 
     # ALL boundary particle neighbours for a given fluid particle will have same density
     fluid_wall_neighbour_density = helper_matrix * fluid_particle_wall_neighbour_density_term
-    fluid_wall_neighbour_mass = math.where(helper_matrix != 0, (d0_fluid * dx * dx), fluid_wall_neighbour_mass)
+    dx_cell = (2 * fluid.elements.bounding_radius()) ** fluid.spatial_rank  # ToDo shouldn't we use the circle area formula, i.e. fluid.elements.volume?
+    fluid_wall_neighbour_mass = math.where(helper_matrix != 0, (d0_fluid * dx_cell), fluid_wall_neighbour_mass)
 
     # joining the density and mass of the fluid and wall particle back together
     fluid_neighbour_density = concat([fluid_fluid_neighbour_density, fluid_wall_neighbour_density], 'others')
     fluid_neighbour_mass = concat([fluid_fluid_neighbour_mass, fluid_wall_neighbour_mass], 'others')
 
     neighbour_mass_by_density_ratio = math.divide_no_nan(fluid_neighbour_mass, fluid_neighbour_density)  # m_b/rho_b
-    dot_product_result = (dvx * Fab_x) + (dvy * Fab_y)
+    dot_product_result = (dvx * fab_x) + (dvy * fab_y)
 
     # Fluid_particle_density is a vector, each row of result is multiplied by the corresponding term of fluid_particle_density and then Sum along each row to get the result(drho_by_dt) for each fluid particle
     d_fluid = rename_dims(d_fluid, 'others', 'particles')
@@ -157,8 +154,8 @@ def calculate_density_derivative(fluid, wall, d_fluid, p_fluid, m_fluid, d0_flui
     return d_rho_by_dt
 
 
-def calculate_acceleration(fluid: PointCloud, wall: PointCloud, d_fluid, p_fluid, p_wall, m_fluid, d0_fluid, fluid_Xi, fluid_adiabatic_exp, fluid_p_0, h, r_c, fluid_alpha, fluid_c_0, gravity):
-    dx = h
+def calculate_acceleration(fluid: PointCloud, wall: PointCloud, d_fluid, p_fluid, p_wall, m_fluid, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, r_c, fluid_alpha, fluid_c_0, gravity):
+    dx = h = 2 * fluid.elements.bounding_radius()
     epsilon = 0.01  # parameter to avoid zero denominator
 
     x = concat([fluid.points, wall.points], 'particles')  # concatenating fluid coords and then boundary coords
@@ -209,34 +206,28 @@ def calculate_acceleration(fluid: PointCloud, wall: PointCloud, d_fluid, p_fluid
     dvx = math.where(fluid_all_neighbours_dist > r_c, 0, dvx)  # relative x-velocity between a fluid particle and its neighbour
     dvy = math.where(fluid_all_neighbours_dist > r_c, 0, dvy)
 
-    ######Do all the cut off things before the final cut off for distance matrix
+    # Do all the cut off things before the final cut off for distance matrix
     distances_vec = math.where(distances > r_c, 0, distances_vec)
     distances = math.where(distances > r_c, 0, distances)  # Stores the distance between neighbours which are inside cutoff radius
 
     # Slicing the distance matrix of fluid neighbour of fluid particles
     rad = distances.particles[:fluid.particles.size].others[:]
 
-    q = rad / h
-
-    der_W = kernel_derivative(h, q) / h
+    der_w = kernel_derivative(h, rad / h) / h
 
     drx = distances_vec['x'].particles[:fluid.particles.size].others[:]
     dry = distances_vec['y'].particles[:fluid.particles.size].others[:]
 
     # rho_b, m_b and p_b matrices rows are for each fluid particle and cols are fluid and wall particles
-    ########THE BELOW 3 MATRICES CAN BE REMOVED
-    fluid_particle_neighbour_density = neighbour_density.particles[:fluid.particles.size].others[:]
-    fluid_particle_neighbour_mass = neighbour_mass.particles[:fluid.particles.size].others[:]
-    fluid_particle_neighbour_pressure = neighbour_pressure.particles[:fluid.particles.size].others[:]
+    fluid_neighbour_pressure = neighbour_pressure.particles[:fluid.particles.size]
 
     # Splitting the density and mass of fluid particle neighbours into two matrices....QQQQQQ CAN WE AVOID THIS? as we have to join it back anyways
-    fluid_fluid_neighbour_density = fluid_particle_neighbour_density.others[:fluid.particles.size]
-    fluid_wall_neighbour_density = fluid_particle_neighbour_density.others[fluid.particles.size:]
-    fluid_fluid_neighbour_mass = fluid_particle_neighbour_mass.others[:fluid.particles.size]
-    fluid_wall_neighbour_mass = fluid_particle_neighbour_mass.others[fluid.particles.size:]
+    fluid_fluid_neighbour_density = neighbour_density.particles[:fluid.particles.size].others[:fluid.particles.size]
+    # fluid_wall_neighbour_density = neighbour_density.particles[:fluid.particles.size].others[fluid.particles.size:]
+    fluid_fluid_neighbour_mass = neighbour_mass.particles[:fluid.particles.size].others[:fluid.particles.size]
+    fluid_wall_neighbour_mass = neighbour_mass.particles[:fluid.particles.size].others[fluid.particles.size:]
 
-    ######'fluid_particle_pressure' is calculated and stored for each fluid particle
-    fluid_wall_neighbour_density_term = d0_fluid * ((p_fluid - fluid_Xi) / fluid_p_0 + 1) ** (1 / fluid_adiabatic_exp)
+    fluid_wall_neighbour_density_term = d0_fluid * ((p_fluid - fluid_xi) / fluid_p_0 + 1) ** (1 / fluid_adiabatic_exp)
 
     fluid_wall_neighbour_density_term = rename_dims(fluid_wall_neighbour_density_term, 'others', 'particles')
     helper_matrix = distances.particles[:fluid.particles.size].others[fluid.particles.size:]
@@ -268,8 +259,8 @@ def calculate_acceleration(fluid: PointCloud, wall: PointCloud, d_fluid, p_fluid
 
     # p_ab = ((rho_b * p_a) + (rho_a * p_b)) / (rho_a + rho_b)
     term_1 = fluid_particle_neighbour_density * p_fluid
-    term_2 = fluid_particle_neighbour_pressure * d_fluid
-    p_ab = math.divide_no_nan(((term_1) + (term_2)), (particle_density_sum))
+    term_2 = fluid_neighbour_pressure * d_fluid
+    p_ab = math.divide_no_nan((term_1 + term_2), particle_density_sum)
 
     # pressure_fact = - (1/m_a) * ((m_a/rho_a)**2 + (m_b/rho_b)**2) * (p_ab) * der_W #equation 5
     fluid_neighbour_mass_by_density_ratio = math.divide_no_nan(fluid_particle_neighbour_mass, fluid_particle_neighbour_density) ** 2  # (m_b/rho_b)²
@@ -279,19 +270,19 @@ def calculate_acceleration(fluid: PointCloud, wall: PointCloud, d_fluid, p_fluid
     mass_by_density_sum = math.where(fluid_neighbour_mass_by_density_ratio != 0, fluid_mass_by_density_ratio + fluid_neighbour_mass_by_density_ratio, fluid_neighbour_mass_by_density_ratio)
 
     # pressure_fact=-(1/m_a) * ((m_a/rho_a)**2 + (m_b/rho_b)**2) * (p_ab) * der_W (equation 5)
-    pressure_fact = (-1 / m_fluid) * mass_by_density_sum * p_ab * der_W
+    pressure_fact = (-1 / m_fluid) * mass_by_density_sum * p_ab * der_w
 
     # a_x
     a_x = math.sum(pressure_fact * math.divide_no_nan(drx, rad), 'others')
     # a_y
     a_y = math.sum(pressure_fact * math.divide_no_nan(dry, rad), 'others')
 
-    ### ARTIFICIAL VISCOSITY
+    # --- ARTIFICIAL VISCOSITY ---
     visc_art_fact = math.zeros(instance(fluid_all_neighbours_dist))  # zeros matrix with size: (fluid_particles X all_particles)
     temp_matrix = (drx * dvx) + (dry * dvy)
 
     # visc_art_fact_term = m_b * alpha_ab * h * c_ab * (((dvx * drx) + (dvy * dry))/(rho_ab * ((rad**2) + epsilon * (h**2)))) * der_W
-    visc_art_fact_term = fluid_particle_neighbour_mass * fluid_particle_neighbour_alpha_ab * h * fluid_particle_neighbour_c_ab * math.divide_no_nan(temp_matrix, (rho_ab * ((rad ** 2) + epsilon * (h ** 2)))) * der_W
+    visc_art_fact_term = fluid_particle_neighbour_mass * fluid_particle_neighbour_alpha_ab * h * fluid_particle_neighbour_c_ab * math.divide_no_nan(temp_matrix, (rho_ab * ((rad ** 2) + epsilon * (h ** 2)))) * der_w
     visc_art_fact = math.where(temp_matrix < 0, visc_art_fact_term, visc_art_fact)
 
     # a_x
@@ -303,9 +294,10 @@ def calculate_acceleration(fluid: PointCloud, wall: PointCloud, d_fluid, p_fluid
     return fluid_acc
 
 
-def time_step_size(fluid_c_0, fluid: PointCloud, wall: PointCloud, h, fluid_alpha, gravity: Tensor):
+def time_step_size(fluid_c_0, fluid: PointCloud, wall: PointCloud, fluid_alpha, gravity: Tensor):
     v_max_magnitude = math.maximum(math.max(math.vec_length(fluid.values)), math.max(math.vec_length(wall.values)))
     c_max = fluid_c_0  # wall_c_0 =0 so no point in taking the max out of them
+    h = 2 * fluid.elements.bounding_radius()
     dt_1 = 0.25 * h / (c_max + v_max_magnitude)  # single value
     mu = 0.5 / (fluid.spatial_rank + 2) * fluid_alpha * h * c_max  # viscous condition
     dt_2 = 0.125 * (h ** 2) / mu
@@ -313,10 +305,10 @@ def time_step_size(fluid_c_0, fluid: PointCloud, wall: PointCloud, h, fluid_alph
     return math.min(wrap([dt_1, dt_2, dt_3], instance('time_steps')))
 
 
-def kernel_function(h, q):
+def kernel_function(h: float, q: Tensor):
     # Quintic Spline used as Weighting function
     # cutoff radius r_c = 3 * h;
-    alpha_d = 0.004661441847880 / (h * h)
+    alpha_d = 0.004661441847880 / (h * h)  # ToDo does this depend on the dimensionality?
     # Weighting function
     w = math.where((q < 3) & (q >= 2), alpha_d * ((3 - q) ** 5), q)
     w = math.where((q < 2) & (q >= 1), alpha_d * (((3 - q) ** 5) - 6 * ((2 - q) ** 5)), w)
@@ -325,10 +317,10 @@ def kernel_function(h, q):
     return w
 
 
-def kernel_derivative(h, q):
-    alpha_d = -0.0233072092393989 / (h * h)
-    der_w = math.where((q < 3) & (q >= 2), alpha_d * ((3 - q) ** 4), q)
-    der_w = math.where((q < 2) & (q >= 1), alpha_d * (((3 - q) ** 4) - 6 * ((2 - q) ** 4)), der_w)
-    der_w = math.where((q < 1) & (q > 0), alpha_d * (((3 - q) ** 4) - 6 * ((2 - q) ** 4) + 15 * ((1 - q) ** 4)), der_w)
-    der_w = math.where((q >= 3), 0, der_w)
-    return der_w
+def kernel_derivative(h: float, q: Tensor):
+    alpha_d = -0.0233072092393989 / (h * h)  # ToDo does this depend on the dimensionality?
+    d_w = math.where((q < 3) & (q >= 2), alpha_d * ((3 - q) ** 4), q)
+    d_w = math.where((q < 2) & (q >= 1), alpha_d * (((3 - q) ** 4) - 6 * ((2 - q) ** 4)), d_w)
+    d_w = math.where((q < 1) & (q > 0), alpha_d * (((3 - q) ** 4) - 6 * ((2 - q) ** 4) + 15 * ((1 - q) ** 4)), d_w)
+    d_w = math.where((q >= 3), 0, d_w)
+    return d_w

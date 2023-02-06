@@ -1,4 +1,4 @@
-from phi.flow import *
+from phi.jax.flow import *
 from sph_phiflow import leapfrog_sph
 
 
@@ -6,8 +6,7 @@ leapfrog_sph = jit_compile(leapfrog_sph)
 
 # --- Constants ---
 dx = 0.006  # distance between particles
-h = dx  # cut off radius
-r_c = 3 * h  # Quintic Spline
+max_dist = 3 * dx  # Quintic Spline
 alpha = 0.02  # viscosity coefficient value of water
 gravity = vec(x=0, y=-9.81)
 
@@ -26,7 +25,7 @@ fluid_mu = 0.01  # viscosity
 fluid_alpha = alpha  # artificial visc factor
 
 x_fluid = pack_dims(math.meshgrid(x=100, y=50), 'x,y', instance('particles')) * (0.6 / 100, 0.3 / 50) + (0.003, 0.003)
-fluid = PointCloud(Sphere(x_fluid, radius=0.01)) * (0.0, 0.0)
+fluid = PointCloud(Sphere(x_fluid, radius=dx / 2)) * (0.0, 0.0)
 single_fluid_particle_mass = fluid_initial_density * dx ** fluid.spatial_rank
 fluid_particle_mass = math.ones(instance(x_fluid)) * single_fluid_particle_mass
 # fluid_pressure = math.zeros(instance(x_fluid))
@@ -49,7 +48,7 @@ left_wall_coords = pack_dims(math.meshgrid(x=3, y=134), 'x,y', instance('particl
 right_wall_coords = pack_dims(math.meshgrid(x=3, y=134), 'x,y', instance('particles')) * ((0.018 / 3), (0.804 / 134)) + (1.617, 0.003)
 center_wall_coords = (pack_dims(math.meshgrid(x=275, y=3), 'x,y', instance('particles')) * ((1.65 / 275), (0.018 / 3)) + (-0.015, -0.015))
 x_wall = concat([left_wall_coords, right_wall_coords, center_wall_coords], 'particles')  # 1629 wall particles
-wall = PointCloud(Sphere(x_wall, radius=0.01)) * (0, 0)
+wall = PointCloud(Sphere(x_wall, radius=dx / 2)) * (0, 0)
 wall_pressure = math.zeros(instance(x_wall))
 wall_density = math.zeros(instance(x_wall))
 
@@ -61,7 +60,7 @@ fluid_trj = [fluid]
 for i in range(11600):  # 11600
     print(i)
     fluid, wall, acceleration, fluid_pressure, fluid_density, wall_pressure = leapfrog_sph(
-        fluid, wall, None, fluid_pressure, wall_pressure, fluid_initial_density, fluid_density, fluid_particle_mass, fluid_adiabatic_exp, fluid_c_0, fluid_p_0, fluid_Xi, fluid_alpha, r_c, h, gravity, dx)
+        fluid, wall, None, fluid_pressure, wall_pressure, fluid_initial_density, fluid_density, fluid_particle_mass, fluid_adiabatic_exp, fluid_c_0, fluid_p_0, fluid_Xi, fluid_alpha, max_dist, gravity)
     if i % 100 == 0:
         fluid_trj.append(fluid)
 

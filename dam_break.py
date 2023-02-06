@@ -1,6 +1,7 @@
 from phi.flow import *
 from sph_phiflow import step, time_step_size
 
+
 d = 2  # dimension of the problem (indirectly dimension of the kernal function)
 dx = 0.006  # distance between particles
 h = dx  # cut off radius
@@ -51,7 +52,7 @@ right_wall_coords = pack_dims(math.meshgrid(x=3, y=134), 'x,y', instance('partic
 center_wall_coords = (pack_dims(math.meshgrid(x=275, y=3), 'x,y', instance('particles')) * ((1.65 / 275), (0.018 / 3)) + (-0.015, -0.015))
 
 # concatenating the wall coordinates
-wall_coords = math.concat([left_wall_coords, right_wall_coords, center_wall_coords], 'particles')  # 1629 wall particles
+wall_coords = concat([left_wall_coords, right_wall_coords, center_wall_coords], 'particles')  # 1629 wall particles
 
 wall_particles = PointCloud(Sphere(wall_coords, radius=0.01), color='#FFA500')
 
@@ -70,17 +71,14 @@ fluid_density = fluid_initial_density * (((fluid_pressure - fluid_Xi) / fluid_p_
 t = 0
 n_dt = 0
 
-################################################
-### To be corrected
-################################################
 H = math.max(fluid_particles.points['y']) - math.min(fluid_particles.points['y']) + dx
-math.print(H.all)
+math.print(H)
 print(height)
 print('Actual height of water column is: ' + str(H))
-if abs(H.all - height) >= 1.0e-6:
+if abs(H - height >= 1.0e-6).all:
     print("wrong height specified")
     print(H.any - height)
-    # exit()
+    exit()
 
 # reference_value
 v_ref = math.sqrt(2 * abs(g) * H)

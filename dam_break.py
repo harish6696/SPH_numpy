@@ -4,13 +4,10 @@ from sph_phiflow import leapfrog_sph
 
 leapfrog_sph = jit_compile(leapfrog_sph)
 
-# --- Constants ---
+# --- Setup ---
+gravity = vec(x=0, y=-9.81)
 dx = 0.006  # distance between particles
 max_dist = 3 * dx  # Quintic Spline
-alpha = 0.02  # viscosity coefficient value of water
-gravity = vec(x=0, y=-9.81)
-
-# --- Setup ---
 width = dx * np.ceil(1.61 / dx)  # width=1.614 for dx= 0.006
 height = 0.3
 v_max = math.sqrt(2 * math.vec_length(gravity) * height)
@@ -21,8 +18,8 @@ fluid_adiabatic_exp = 7.0  # adiabatic coefficient (pressure coefficient)
 fluid_c_0 = 10.0 * v_max  # artificial speed of sound c_0 and v_max = 2*abs(g)*height
 fluid_p_0 = fluid_initial_density * fluid_c_0 ** 2 / fluid_adiabatic_exp  # reference pressure
 fluid_Xi = 0.0  # background pressure
-fluid_mu = 0.01  # viscosity
-fluid_alpha = alpha  # artificial visc factor
+# fluid_mu = 0.01  # viscosity
+fluid_alpha = 0.02  # artificial viscosity factor
 
 x_fluid = pack_dims(math.meshgrid(x=100, y=50), 'x,y', instance('particles')) * (0.6 / 100, 0.3 / 50) + (0.003, 0.003)
 fluid = PointCloud(Sphere(x_fluid, radius=dx / 2)) * (0.0, 0.0)
@@ -36,13 +33,13 @@ print(f'height={height}, actual height of water column is: ' + str(H))
 assert not abs(H - height >= 1.0e-6).all, f"wrong height specified: {H - height}"
 
 # --- Properties of Wall particles ---
-wall_initial_density = 0.0
-wall_adiabatic_exp = 0.0  # adiabatic coefficient (pressure coefficient)
-wall_c_0 = 0.0  # artificial speed of sound c_0
-wall_p_0 = 0.0  # reference pressure
-wall_Xi = 0.0  # background pressure
-wall_mu = 0.0  # viscosity
-wall_alpha = 0 - 0  # artificial visc factor
+# wall_initial_density = 0.0
+# wall_adiabatic_exp = 0.0  # adiabatic coefficient (pressure coefficient)
+# wall_c_0 = 0.0  # artificial speed of sound c_0
+# wall_p_0 = 0.0  # reference pressure
+# wall_Xi = 0.0  # background pressure
+# wall_mu = 0.0  # viscosity
+# wall_alpha = 0.0  # artificial viscosity factor
 
 left_wall_coords = pack_dims(math.meshgrid(x=3, y=134), 'x,y', instance('particles')) * ((0.018 / 3), (0.804 / 134)) + (-0.015, 0.003)
 right_wall_coords = pack_dims(math.meshgrid(x=3, y=134), 'x,y', instance('particles')) * ((0.018 / 3), (0.804 / 134)) + (1.617, 0.003)
@@ -68,5 +65,5 @@ for i in range(11600):  # 11600
 fluid_trj = stack(fluid_trj, batch('time'), expand_values=True)
 print("Creating video...")
 vis.plot(vis.overlay(wall.elements, fluid_trj.elements), animate='time')
-vis.savefig('SPH.mp4')
+vis.savefig('vid_dam_break.mp4')
 print("Video saved")

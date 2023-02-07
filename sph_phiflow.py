@@ -27,8 +27,8 @@ def leapfrog_sph(fluid: PointCloud,
         fluid:
         wall:
         prev_fluid_acc:
-        p_fluid:
-        p_wall: Fluid pressure
+        p_fluid: Fluid pressure.
+        p_wall: Obstacle pressure.
         d0_fluid: Fluid initial density
         d_fluid: Fluid density
         mass: Fluid mass
@@ -41,27 +41,29 @@ def leapfrog_sph(fluid: PointCloud,
         gravity: Gravity vector as `Tensor`
 
     Returns:
-
+        fluid: Next fluid state
+        wall: Obstacle particles with updated velocities
+        fluid_acc:
+        p_fluid: Fluid pressure.
+        d_fluid: Fluid density.
+        p_wall: Obstacle pressure.
     """
     dt = time_step_size(fluid_c_0, fluid, wall, fluid_alpha, gravity)
+    # --- Integrate velocity & position ---
     if prev_fluid_acc is None:
         prev_fluid_acc = calculate_acceleration(fluid, wall, d_fluid, p_fluid, p_wall, mass, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, max_dist, fluid_alpha, fluid_c_0, gravity)
-    # --- Integrate velocity & position ---
-    v_fluid = fluid.values + dt / 2 * prev_fluid_acc
-    x_fluid = fluid.elements.shifted(dt / 2 * v_fluid)
-    fluid = fluid.with_elements(x_fluid).with_values(v_fluid)
-    # --- Pressure ---
-    p_wall, wall = boundary_update(fluid, wall, p_fluid, d_fluid, max_dist, gravity)
-    d_rho_by_dt = calculate_density_derivative(fluid, wall, d_fluid, p_fluid, mass, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, max_dist)
-    d_fluid = d_fluid + (dt * d_rho_by_dt)
+    fluid += dt / 2 * prev_fluid_acc
+    fluid = fluid.shifted(dt / 2 * fluid.values)
+    # --- Density & Pressure ---
+    p_wall, wall = boundary_update(fluid, wall, p_fluid, d_fluid, max_dist, gravity)  # ToDo p_wall is not used, we can replace the assignment by _
+    d_fluid += dt * calculate_density_derivative(fluid, wall, d_fluid, p_fluid, mass, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, max_dist)
     p_fluid = fluid_p_0 * ((d_fluid / d0_fluid) ** fluid_adiabatic_exp - 1) + fluid_xi
-    # --- Integrate position ---
-    fluid = fluid.with_elements(fluid.elements.shifted(.5 * dt * v_fluid))
-    # --- Compute new acceleration and integrate velocity ---
+    # --- Integrate velocity & position ---
+    fluid = fluid.shifted(dt / 2 * fluid.values)
     p_wall, wall = boundary_update(fluid, wall, p_fluid, d_fluid, max_dist, gravity)  # ToDo This would require a new distance matrix since fluid positions were altered
     fluid_acc = calculate_acceleration(fluid, wall, d_fluid, p_fluid, p_wall, mass, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, max_dist, fluid_alpha, fluid_c_0, gravity)
-    v_fluid = v_fluid + (dt / 2) * fluid_acc
-    return fluid.with_values(v_fluid), wall, fluid_acc, p_fluid, d_fluid, p_wall
+    fluid += dt / 2 * fluid_acc
+    return fluid, wall, fluid_acc, p_fluid, d_fluid, p_wall
 
 
 def boundary_update(fluid: PointCloud, wall, p_fluid, d_fluid, max_dist, gravity: Tensor):

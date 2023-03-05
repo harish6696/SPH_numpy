@@ -7,7 +7,7 @@ leapfrog_sph = jit_compile(leapfrog_sph)
 # --- Setup ---
 gravity = vec(x=0, y=-9.81)
 dx = 0.006  # distance between particles
-max_dist = 3 * dx  # Quintic Spline
+max_dist = 3 * dx  # Quintic Spline (Cut off radius)
 width = dx * np.ceil(1.61 / dx)  # width=1.614 for dx= 0.006
 height = 0.3
 v_max = math.sqrt(2 * math.vec_length(gravity) * height)
@@ -21,7 +21,10 @@ fluid_Xi = 0.0  # background pressure
 # fluid_mu = 0.01  # viscosity
 fluid_alpha = 0.02  # artificial viscosity factor
 
-x_fluid = pack_dims(math.meshgrid(x=100, y=50), 'x,y', instance('particles')) * (0.6 / 100, 0.3 / 50) + (0.003, 0.003)
+#x_fluid = pack_dims(math.meshgrid(x=100, y=50), 'x,y', instance('particles')) * (0.6 / 100, 0.3 / 50) + (0.003, 0.003)
+x_fluid = pack_dims(math.meshgrid(x=25, y=25), 'x,y', instance('particles')) * (0.15/25, 0.15/25) + (0.825,0.005)
+#x_fluid = pack_dims(math.meshgrid(x=3, y=2), 'x,y', instance('particles')) * (0.018/3.0, 0.012/2.0) + (0.825,0.10)  # 6 fluid particle coordinates created 
+
 fluid = PointCloud(Sphere(x_fluid, radius=dx / 2)) * (0.0, 0.0)
 single_fluid_particle_mass = fluid_initial_density * dx ** fluid.spatial_rank
 fluid_particle_mass = math.ones(instance(x_fluid)) * single_fluid_particle_mass
@@ -45,6 +48,10 @@ left_wall_coords = pack_dims(math.meshgrid(x=3, y=134), 'x,y', instance('particl
 right_wall_coords = pack_dims(math.meshgrid(x=3, y=134), 'x,y', instance('particles')) * ((0.018 / 3), (0.804 / 134)) + (1.617, 0.003)
 center_wall_coords = (pack_dims(math.meshgrid(x=275, y=3), 'x,y', instance('particles')) * ((1.65 / 275), (0.018 / 3)) + (-0.015, -0.015))
 x_wall = concat([left_wall_coords, right_wall_coords, center_wall_coords], 'particles')  # 1629 wall particles
+
+# center_wall_coords = (pack_dims(math.meshgrid(x=3, y=2), 'x,y', instance('particles')) * ( (0.6/100), (0.012/2) ) + (0.815,-0.015))
+# x_wall = center_wall_coords
+
 wall = PointCloud(Sphere(x_wall, radius=dx / 2)) * (0, 0)
 wall_pressure = math.zeros(instance(x_wall))
 wall_density = math.zeros(instance(x_wall))
@@ -54,8 +61,8 @@ wall_density = math.zeros(instance(x_wall))
 
 # --- Run the simulation ---
 fluid_trj = [fluid]
-for i in range(11600):  # 11600
-    print(i)
+for i in range(15000):  # 11600
+    print('timestep '+str(i))
     fluid, wall, acceleration, fluid_pressure, fluid_density, wall_pressure = leapfrog_sph(
         fluid, wall, None, fluid_pressure, wall_pressure, fluid_initial_density, fluid_density, fluid_particle_mass, fluid_adiabatic_exp, fluid_c_0, fluid_p_0, fluid_Xi, fluid_alpha, max_dist, gravity)
     if i % 100 == 0:

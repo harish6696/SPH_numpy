@@ -49,27 +49,34 @@ def leapfrog_sph(fluid: PointCloud,
         p_wall: Obstacle pressure.
     """
     dt = time_step_size(fluid_c_0, fluid, wall, fluid_alpha, gravity)
+    #--neigbour distance calculation--
+    x = concat([fluid.points, wall.points], 'particles')
+    distances_vec = -math.pairwise_distances(x, max_dist)  #sending after performing cut-off to each function
+    distances = vec_length(distances_vec)
+    
     # --- Integrate velocity & position ---
     if prev_fluid_acc is None:
-        prev_fluid_acc = calculate_acceleration(fluid, wall, d_fluid, p_fluid, p_wall, mass, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, max_dist, fluid_alpha, fluid_c_0, gravity)
+        prev_fluid_acc = calculate_acceleration(fluid, wall, d_fluid, p_fluid, p_wall, mass, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, max_dist, fluid_alpha, fluid_c_0, gravity, distances_vec, distances)
     fluid += dt / 2 * prev_fluid_acc
     fluid = fluid.shifted(dt / 2 * fluid.values)
     # --- Density & Pressure ---
-    p_wall, wall = boundary_update(fluid, wall, p_fluid, d_fluid, max_dist, gravity)  # ToDo p_wall is not used, we can replace the assignment by _
-    d_fluid += dt * calculate_density_derivative(fluid, wall, d_fluid, p_fluid, mass, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, max_dist)
+    p_wall, wall = boundary_update(fluid, wall, p_fluid, d_fluid, max_dist, gravity, distances_vec, distances)  # ToDo p_wall is not used, we can replace the assignment by _
+    d_fluid += dt * calculate_density_derivative(fluid, wall, d_fluid, p_fluid, mass, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, max_dist, distances_vec, distances)
     p_fluid = fluid_p_0 * ((d_fluid / d0_fluid) ** fluid_adiabatic_exp - 1) + fluid_xi
     # --- Integrate velocity & position ---
     fluid = fluid.shifted(dt / 2 * fluid.values)
-    p_wall, wall = boundary_update(fluid, wall, p_fluid, d_fluid, max_dist, gravity)  # ToDo This would require a new distance matrix since fluid positions were altered
-    fluid_acc = calculate_acceleration(fluid, wall, d_fluid, p_fluid, p_wall, mass, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, max_dist, fluid_alpha, fluid_c_0, gravity)
+    p_wall, wall = boundary_update(fluid, wall, p_fluid, d_fluid, max_dist, gravity, distances_vec, distances)  # ToDo This would require a new distance matrix since fluid positions were altered
+    fluid_acc = calculate_acceleration(fluid, wall, d_fluid, p_fluid, p_wall, mass, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, max_dist, fluid_alpha, fluid_c_0, gravity, distances_vec, distances)
     fluid += dt / 2 * fluid_acc
     return fluid, wall, fluid_acc, p_fluid, d_fluid, p_wall
 
 
-def boundary_update(fluid: PointCloud, wall, p_fluid, d_fluid, max_dist, gravity: Tensor):
-    x = concat([fluid.points, wall.points], 'particles')
-    distances_vec = -math.pairwise_distances(x, max_dist).particles[fluid.particles.size:].others[:fluid.particles.size]  # fluid neighbors of wall particles
-    distances = vec_length(distances_vec)
+def boundary_update(fluid: PointCloud, wall, p_fluid, d_fluid, max_dist, gravity: Tensor, distances_vec, distances):
+
+    #only for wall particle and their fluid neighbour
+    distances_vec=distances_vec.particles[fluid.particles.size:].others[:fluid.particles.size]
+    distances = distances.particles[fluid.particles.size:].others[:fluid.particles.size]
+
     h = 2 * fluid.elements.bounding_radius()
     w = kernel_function(h, distances / h)
     sum_p_w = w.others * p_fluid.particles
@@ -82,7 +89,7 @@ def boundary_update(fluid: PointCloud, wall, p_fluid, d_fluid, max_dist, gravity
     return p_wall, wall
 
 
-def calculate_density_derivative(fluid, wall, d_fluid, p_fluid, m_fluid, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, r_c):
+def calculate_density_derivative(fluid, wall, d_fluid, p_fluid, m_fluid, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, r_c , distances_vec, distances):
     # wall_density=0, wall_mass=0 expected initially
     x = concat([fluid.points, wall.points], 'particles')
     v = concat([fluid.values, wall.values], 'particles')
@@ -91,28 +98,28 @@ def calculate_density_derivative(fluid, wall, d_fluid, p_fluid, m_fluid, d0_flui
     d_fluid = rename_dims(d_fluid, 'particles', 'others')  # fluid_particle_density and mass have initially particle dimension (i.e column vector)
     m_fluid = rename_dims(m_fluid, 'particles', 'others')
     density = concat([d_fluid, d_wall], 'others')  # 1D Scalar array of densities of all particles (now it is a row vector)
+    
     mass = concat([m_fluid, wall_mass], 'others')
+    
     # Compute distance between all particles
-    distances_vec = x - rename_dims(x, 'particles', 'others')  # contains both the x and y component of separation between particles
-    distances = vec_length(distances_vec)  # contains magnitude of distance between ALL particles
+    # distances_vec = x - rename_dims(x, 'particles', 'others')  # contains both the x and y component of separation between particles
+    # distances = vec_length(distances_vec)  # contains magnitude of distance between ALL particles
 
-    particle_neighbour_density = where(distances == 0, 0, density)
-    particle_neighbour_density = where(distances > r_c, 0, particle_neighbour_density)  # 0 for places which are not neighbours for particle under consideration. Stacks the particle density vertically. i.e. dupicates the densities
+    # # Do all the cut off things before the final cut off for distance matrix
+    # distances_vec = where(distances > r_c, 0, distances_vec)
+    # distances = where(distances > r_c, 0, distances)  # Stores the distance between neighbours which are inside cutoff radius
 
+   
+    particle_neighbour_density = where(distances == 0, 0, density)  # 0 for places which are not neighbours for particle under consideration. Stacks the particle density vertically. i.e. dupicates the densities
     particle_neighbour_mass = where(distances == 0, 0, mass)
-    particle_neighbour_mass = where(distances > r_c, 0, particle_neighbour_mass)
 
     relative_v = v - rename_dims(v, 'particles', 'others')  # 2d matrix of ALL particle velocity
     dvx = relative_v['x'].particles[:fluid.particles.size].others[:]  # separating the x and y components
     dvy = relative_v['y'].particles[:fluid.particles.size].others[:]
 
     fluid_particle_relative_dist = distances.particles[:fluid.particles.size].others[:]
-    dvx = where(fluid_particle_relative_dist > r_c, 0, dvx)  # relative x-velocity between a fluid particle and its neighbour
-    dvy = where(fluid_particle_relative_dist > r_c, 0, dvy)
-
-    # Do all the cut off things before the final cut off for distance matrix
-    distances_vec = where(distances > r_c, 0, distances_vec)
-    distances = where(distances > r_c, 0, distances)  # Stores the distance between neighbours which are inside cutoff radius
+    dvx = where(fluid_particle_relative_dist == 0, 0, dvx)  # relative x-velocity between a fluid particle and its neighbour
+    dvy = where(fluid_particle_relative_dist == 0, 0, dvy)
 
     h = 2 * fluid.elements.bounding_radius()
     d_w_ab = kernel_derivative(h, distances.particles[:fluid.particles.size] / h) / h  # Consider all neighbours of fluid particles
@@ -123,15 +130,10 @@ def calculate_density_derivative(fluid, wall, d_fluid, p_fluid, m_fluid, d0_flui
     mod_dist = (distances.particles[:fluid.particles.size].others[:])
     fab_x = where(mod_dist != 0, divide_no_nan(drx, mod_dist) * d_w_ab, drx)
     fab_y = where(mod_dist != 0, divide_no_nan(dry, mod_dist) * d_w_ab, dry)
-
-    fluid_neighbour_density = particle_neighbour_density.particles[:fluid.particles.size].others[:]
-    fluid_neighbour_mass = particle_neighbour_mass.particles[:fluid.particles.size].others[:]
-
-    # Splitting the density and mass of fluid particle neighbours into two matrices....QQQQQQ CAN WE AVOID THIS? as we have to join it back anyways
-    fluid_fluid_neighbour_density = fluid_neighbour_density.particles[:].others[:fluid.particles.size]
-    # fluid_wall_neighbour_density = fluid_neighbour_density.particles[:].others[fluid.particles.size:]
-    fluid_fluid_neighbour_mass = fluid_neighbour_mass.particles[:].others[:fluid.particles.size]
-    fluid_wall_neighbour_mass = fluid_neighbour_mass.particles[:].others[fluid.particles.size:]
+    
+    fluid_fluid_neighbour_density = particle_neighbour_density.particles[:fluid.particles.size].others[:fluid.particles.size]    
+    fluid_fluid_neighbour_mass= particle_neighbour_mass.particles[:fluid.particles.size].others[:fluid.particles.size]
+    fluid_wall_neighbour_mass = particle_neighbour_mass.particles[:fluid.particles.size].others[fluid.particles.size:]
 
     # fluid_pressure is for each fluid particle
     fluid_particle_wall_neighbour_density_term = d0_fluid * ((p_fluid - fluid_xi) / fluid_p_0 + 1) ** (1 / fluid_adiabatic_exp)
@@ -155,11 +157,11 @@ def calculate_density_derivative(fluid, wall, d_fluid, p_fluid, m_fluid, d0_flui
     return d_rho_by_dt
 
 
-def calculate_acceleration(fluid: PointCloud, wall: PointCloud, d_fluid, p_fluid, p_wall, m_fluid, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, r_c, fluid_alpha, fluid_c_0, gravity):
+def calculate_acceleration(fluid: PointCloud, wall: PointCloud, d_fluid, p_fluid, p_wall, m_fluid, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, r_c, fluid_alpha, fluid_c_0, gravity,distances_vec, distances):
     dx = h = 2 * fluid.elements.bounding_radius()
     epsilon = 0.01  # parameter to avoid zero denominator
 
-    x = concat([fluid.points, wall.points], 'particles')  # concatenating fluid coords and then boundary coords
+    #x = concat([fluid.points, wall.points], 'particles')  # concatenating fluid coords and then boundary coords
 
     d_fluid = rename_dims(d_fluid, 'particles', 'others')
     d_wall = rename_dims(zeros(instance(wall)), 'particles', 'others')
@@ -176,40 +178,39 @@ def calculate_acceleration(fluid: PointCloud, wall: PointCloud, d_fluid, p_fluid
     pressure = concat([p_fluid, p_wall], 'others')
 
     # Compute distance between all particles
-    distances_vec = x - rename_dims(x, 'particles', 'others')  # contains both the x and y component of separation between particles
-    distances = vec_length(distances_vec)  # contains magnitude of distance between ALL particles
+    # distances_vec = x - rename_dims(x, 'particles', 'others')  # contains both the x and y component of separation between particles
+    # distances = vec_length(distances_vec)  # contains magnitude of distance between ALL particles
+    # # Do all the cut off things before the final cut off for distance matrix
+    # distances_vec = where(distances > r_c, 0, distances_vec)
+    # distances = where(distances > r_c, 0, distances)  # Stores the distance between neighbours which are inside cutoff radius
 
-    alpha_ab = where(distances == 0, 0, fluid_alpha)  # Removing the particle itself from further calculation
-    alpha_ab = where(distances > r_c, 0, alpha_ab)  # N X N matrix N-->all particles
+    #alpha_ab = where(distances == 0, 0, fluid_alpha)  # Removing the particle itself from further calculation
+    alpha_ab = where(distances == 0, 0, fluid_alpha)  # N X N matrix N-->all particles
     fluid_particle_neighbour_alpha_ab = alpha_ab.particles[:fluid.particles.size].others[:]
 
-    c_ab = where(distances == 0, 0, fluid_c_0)  # Removing the particle itself from further calculation
-    c_ab = where(distances > r_c, 0, c_ab)  # N X N matrix N-->all particles
+    #c_ab = where(distances == 0, 0, fluid_c_0)  # Removing the particle itself from further calculation
+    c_ab = where(distances == 0, 0, fluid_c_0)  # N X N matrix N-->all particles
     fluid_particle_neighbour_c_ab = c_ab.particles[:fluid.particles.size].others[:]
 
     # Below we create matrices which have non-zero entries where the neighbour is inside cut-off radius 'r_c' rest all entries are 0
     vel = rename_dims(vel, 'others', 'particles')
     relative_v = vel - rename_dims(vel, 'particles', 'others')
 
-    neighbour_density = where(distances == 0, 0, density)  # Removing the particle itself from further calculation
-    neighbour_density = where(distances > r_c, 0, neighbour_density)  # 0 for places which are not neighbours for particle under consideration. Stacks the particle density vertically. i.e. dupicates the densities
+    #neighbour_density = where(distances == 0, 0, density)  # Removing the particle itself from further calculation
+    neighbour_density = where(distances == 0, 0, density)  # 0 for places which are not neighbours for particle under consideration. Stacks the particle density vertically. i.e. dupicates the densities
 
-    neighbour_mass = where(distances == 0, 0, mass)  # Removing the particle itself from further calculation
-    neighbour_mass = where(distances > r_c, 0, neighbour_mass)
+    #neighbour_mass = where(distances == 0, 0, mass)  # Removing the particle itself from further calculation
+    neighbour_mass = where(distances == 0 , 0, mass)
 
-    neighbour_pressure = where(distances == 0, 0, pressure)  # Removing the particle itself from further calculation
-    neighbour_pressure = where(distances > r_c, 0, neighbour_pressure)
+    #neighbour_pressure = where(distances == 0, 0, pressure)  # Removing the particle itself from further calculation
+    neighbour_pressure = where(distances == 0, 0, pressure)
 
     dvx = relative_v['x'].particles[:fluid.particles.size]  # separating the x and y components
     dvy = relative_v['y'].particles[:fluid.particles.size]
 
     fluid_all_neighbours_dist = distances.particles[:fluid.particles.size]
-    dvx = where(fluid_all_neighbours_dist > r_c, 0, dvx)  # relative x-velocity between a fluid particle and its neighbour
-    dvy = where(fluid_all_neighbours_dist > r_c, 0, dvy)
-
-    # Do all the cut off things before the final cut off for distance matrix
-    distances_vec = where(distances > r_c, 0, distances_vec)
-    distances = where(distances > r_c, 0, distances)  # Stores the distance between neighbours which are inside cutoff radius
+    dvx = where(fluid_all_neighbours_dist == 0, 0, dvx)  # relative x-velocity between a fluid particle and its neighbour
+    dvy = where(fluid_all_neighbours_dist == 0, 0, dvy)
 
     # Slicing the distance matrix of fluid neighbour of fluid particles
     rad = distances.particles[:fluid.particles.size].others[:]
@@ -222,9 +223,7 @@ def calculate_acceleration(fluid: PointCloud, wall: PointCloud, d_fluid, p_fluid
     # rho_b, m_b and p_b matrices rows are for each fluid particle and cols are fluid and wall particles
     fluid_neighbour_pressure = neighbour_pressure.particles[:fluid.particles.size]
 
-    # Splitting the density and mass of fluid particle neighbours into two matrices....QQQQQQ CAN WE AVOID THIS? as we have to join it back anyways
     fluid_fluid_neighbour_density = neighbour_density.particles[:fluid.particles.size].others[:fluid.particles.size]
-    # fluid_wall_neighbour_density = neighbour_density.particles[:fluid.particles.size].others[fluid.particles.size:]
     fluid_fluid_neighbour_mass = neighbour_mass.particles[:fluid.particles.size].others[:fluid.particles.size]
     fluid_wall_neighbour_mass = neighbour_mass.particles[:fluid.particles.size].others[fluid.particles.size:]
 

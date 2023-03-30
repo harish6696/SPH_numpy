@@ -1,32 +1,31 @@
 from phi.jax.flow import *
-from sph_phiflow import leapfrog_sph
+from sph_phiflow import velocity_verlet
 
 
-leapfrog_sph = jit_compile(leapfrog_sph)
+velocity_verlet = jit_compile(velocity_verlet)
 
 # --- Setup ---
 gravity = vec(x=0, y=-9.81)
 dx = 0.006  # distance between particles
 max_dist = 3 * dx  # Quintic Spline (Cut off radius)
 width = dx * np.ceil(1.61 / dx)  # width=1.614 for dx= 0.006
-height = 0.3
+height = 0.3 ##TO BE MODIFIED ACCORDING TO THE SIMULATION
 v_max = math.sqrt(2 * math.vec_length(gravity) * height)
 
 # --- Properties of Fluid Particles ---
 fluid_initial_density = 1000.0
 fluid_adiabatic_exp = 7.0  # adiabatic coefficient (pressure coefficient)
 fluid_c_0 = 10.0 * v_max  # artificial speed of sound c_0 and v_max = 2*abs(g)*height
-fluid_p_0 = fluid_initial_density * fluid_c_0 ** 2 / fluid_adiabatic_exp  # reference pressure
+fluid_p_0 = (fluid_initial_density * (fluid_c_0 ** 2)) / fluid_adiabatic_exp  # reference pressure
 fluid_Xi = 0.0  # background pressure
-# fluid_mu = 0.01  # viscosity
-fluid_alpha = 0.02  # artificial viscosity factor
+fluid_alpha = 0.02  #  artificial viscosity factor (changed this from 0.02 to 0.1)
 
 #x_fluid = pack_dims(math.meshgrid(x=100, y=50), 'x,y', instance('particles')) * (0.6 / 100, 0.3 / 50) + (0.003, 0.003)
 x_fluid = pack_dims(math.meshgrid(x=25, y=25), 'x,y', instance('particles')) * (0.15/25, 0.15/25) + (0.825,0.005)
 #x_fluid = pack_dims(math.meshgrid(x=3, y=2), 'x,y', instance('particles')) * (0.018/3.0, 0.012/2.0) + (0.825,0.10)  # 6 fluid particle coordinates created 
 
 fluid = PointCloud(Sphere(x_fluid, radius=dx / 2)) * (0.0, 0.0)
-single_fluid_particle_mass = fluid_initial_density * dx ** fluid.spatial_rank
+single_fluid_particle_mass = fluid_initial_density * (dx ** fluid.spatial_rank)
 fluid_particle_mass = math.ones(instance(x_fluid)) * single_fluid_particle_mass
 # fluid_pressure = math.zeros(instance(x_fluid))
 fluid_pressure = fluid_initial_density * math.vec_length(gravity) * (height - fluid.points['y'])
@@ -61,9 +60,9 @@ wall_density = math.zeros(instance(x_wall))
 
 # --- Run the simulation ---
 fluid_trj = [fluid]
-for i in range(15000):  # 11600
+for i in range(25000):  # 11600
     print('timestep '+str(i))
-    fluid, wall, acceleration, fluid_pressure, fluid_density, wall_pressure = leapfrog_sph(
+    fluid, wall, acceleration, fluid_pressure, fluid_density, wall_pressure = velocity_verlet(
         fluid, wall, None, fluid_pressure, wall_pressure, fluid_initial_density, fluid_density, fluid_particle_mass, fluid_adiabatic_exp, fluid_c_0, fluid_p_0, fluid_Xi, fluid_alpha, max_dist, gravity)
     if i % 100 == 0:
         fluid_trj.append(fluid)

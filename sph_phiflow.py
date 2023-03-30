@@ -3,7 +3,7 @@ from phi.math import Tensor, concat, rename_dims, instance, channel, stack, wrap
 from phi.field import PointCloud
 
 
-def leapfrog_sph(fluid: PointCloud,
+def velocity_verlet(fluid: PointCloud,
                  wall: PointCloud,
                  prev_fluid_acc,
                  p_fluid,
@@ -24,20 +24,20 @@ def leapfrog_sph(fluid: PointCloud,
     The implementation is based on the paper [...]().
 
     Args:
-        fluid:
-        wall:
-        prev_fluid_acc:
+        fluid: Pointcloud
+        wall: Point cloud
+        prev_fluid_acc: accleration of fluid particles from the previous time step
         p_fluid: Fluid pressure.
         p_wall: Obstacle pressure.
-        d0_fluid: Fluid initial density
-        d_fluid: Fluid density
-        mass: Fluid mass
-        fluid_adiabatic_exp:
-        fluid_c_0:
-        fluid_p_0:
-        fluid_xi:
-        fluid_alpha:
-        max_dist:
+        d0_fluid: Fluid initial density (1000kg/m³ for water)
+        d_fluid: Fluid density (here we are assuiming Weakly Compressible SPH, therefore density changes)
+        mass: mass of fluid particles
+        fluid_adiabatic_exp: 
+        fluid_c_0: Artificial speed of sound . Approximately 10*sqrt(2*g*H)
+        fluid_p_0:Initial pressure of the fluid = density*g*H
+        fluid_xi: Back pressure (For free surface flows = 0)
+        fluid_alpha: Artificial viscosity constant 
+        max_dist: Cut off radius (3*dx)
         gravity: Gravity vector as `Tensor`
 
     Returns:
@@ -54,31 +54,32 @@ def leapfrog_sph(fluid: PointCloud,
     distances_vec = -math.pairwise_distances(x, max_dist)  #sending after performing cut-off to each function
     distances = vec_length(distances_vec)
     
-    # --- Integrate velocity & position ---
+    # --- Integrate velocity & position (using velocity verlet scheme)---
     if prev_fluid_acc is None:
         prev_fluid_acc = calculate_acceleration(fluid, wall, d_fluid, p_fluid, p_wall, mass, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, max_dist, fluid_alpha, fluid_c_0, gravity, distances_vec, distances)
-    fluid += dt / 2 * prev_fluid_acc
-    fluid = fluid.shifted(dt / 2 * fluid.values)
+    fluid += (dt / 2) * prev_fluid_acc              #velocity update
+    fluid = fluid.shifted((dt / 2) * fluid.values)  #position update
     # --- Density & Pressure ---
     p_wall, wall = boundary_update(fluid, wall, p_fluid, d_fluid, max_dist, gravity, distances_vec, distances)  # ToDo p_wall is not used, we can replace the assignment by _
     d_fluid += dt * calculate_density_derivative(fluid, wall, d_fluid, p_fluid, mass, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, max_dist, distances_vec, distances)
     p_fluid = fluid_p_0 * ((d_fluid / d0_fluid) ** fluid_adiabatic_exp - 1) + fluid_xi
     # --- Integrate velocity & position ---
-    fluid = fluid.shifted(dt / 2 * fluid.values)
-    p_wall, wall = boundary_update(fluid, wall, p_fluid, d_fluid, max_dist, gravity, distances_vec, distances)  # ToDo This would require a new distance matrix since fluid positions were altered
+    fluid = fluid.shifted(dt / 2 * fluid.values) #position update ##ToDo This would require a new distance matrix since fluid positions were altered
+    p_wall, wall = boundary_update(fluid, wall, p_fluid, d_fluid, max_dist, gravity, distances_vec, distances)  
     fluid_acc = calculate_acceleration(fluid, wall, d_fluid, p_fluid, p_wall, mass, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, max_dist, fluid_alpha, fluid_c_0, gravity, distances_vec, distances)
-    fluid += dt / 2 * fluid_acc
+    fluid += (dt / 2) * fluid_acc               #velocity update
     return fluid, wall, fluid_acc, p_fluid, d_fluid, p_wall
 
 
 def boundary_update(fluid: PointCloud, wall, p_fluid, d_fluid, max_dist, gravity: Tensor, distances_vec, distances):
-
+    """Function calculates the wall pressure and updates the wall velocity"""
     #only for wall particle and their fluid neighbour
     distances_vec=distances_vec.particles[fluid.particles.size:].others[:fluid.particles.size]
     distances = distances.particles[fluid.particles.size:].others[:fluid.particles.size]
 
     h = 2 * fluid.elements.bounding_radius()
-    w = kernel_function(h, distances / h)
+    ####CHANGE KERNAL HERE
+    w = wendland_C2_kernel(h, distances / h)
     sum_p_w = w.others * p_fluid.particles
     sum_density_r_w = ((distances_vec.vector * gravity.vector) * w).others * d_fluid.particles
     sum_w = math.sum(w, 'others')
@@ -91,6 +92,7 @@ def boundary_update(fluid: PointCloud, wall, p_fluid, d_fluid, max_dist, gravity
 
 def calculate_density_derivative(fluid, wall, d_fluid, p_fluid, m_fluid, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, r_c , distances_vec, distances):
     # wall_density=0, wall_mass=0 expected initially
+    """This function implements the continuity equation by calculating and returning the rate of change of density"""
     x = concat([fluid.points, wall.points], 'particles')
     v = concat([fluid.values, wall.values], 'particles')
     d_wall = rename_dims(zeros(instance(wall)), 'particles', 'others')
@@ -101,15 +103,6 @@ def calculate_density_derivative(fluid, wall, d_fluid, p_fluid, m_fluid, d0_flui
     
     mass = concat([m_fluid, wall_mass], 'others')
     
-    # Compute distance between all particles
-    # distances_vec = x - rename_dims(x, 'particles', 'others')  # contains both the x and y component of separation between particles
-    # distances = vec_length(distances_vec)  # contains magnitude of distance between ALL particles
-
-    # # Do all the cut off things before the final cut off for distance matrix
-    # distances_vec = where(distances > r_c, 0, distances_vec)
-    # distances = where(distances > r_c, 0, distances)  # Stores the distance between neighbours which are inside cutoff radius
-
-   
     particle_neighbour_density = where(distances == 0, 0, density)  # 0 for places which are not neighbours for particle under consideration. Stacks the particle density vertically. i.e. dupicates the densities
     particle_neighbour_mass = where(distances == 0, 0, mass)
 
@@ -122,7 +115,10 @@ def calculate_density_derivative(fluid, wall, d_fluid, p_fluid, m_fluid, d0_flui
     dvy = where(fluid_particle_relative_dist == 0, 0, dvy)
 
     h = 2 * fluid.elements.bounding_radius()
-    d_w_ab = kernel_derivative(h, distances.particles[:fluid.particles.size] / h) / h  # Consider all neighbours of fluid particles
+
+    #####CHANGE KERNEL DERIVATIVE HERE
+    # 'q' = r/h = distances.particles[:fluid.particles.size] / h
+    d_w_ab = wendland_C2_kernel_derivative(h, distances.particles[:fluid.particles.size] / h) / h  # Consider all neighbours of fluid particles
 
     drx = distances_vec['x'].particles[:fluid.particles.size].others[:]
     dry = distances_vec['y'].particles[:fluid.particles.size].others[:]
@@ -137,7 +133,7 @@ def calculate_density_derivative(fluid, wall, d_fluid, p_fluid, m_fluid, d0_flui
 
     # fluid_pressure is for each fluid particle
     fluid_particle_wall_neighbour_density_term = d0_fluid * ((p_fluid - fluid_xi) / fluid_p_0 + 1) ** (1 / fluid_adiabatic_exp)
-    helper_matrix = distances.particles[:fluid.particles.size].others[fluid.particles.size:]
+    helper_matrix = distances.particles[:fluid.particles.size].others[fluid.particles.size:] #considering portion of distance-matrix corresponding to fluid_particles and wall neighbors
     helper_matrix = where(helper_matrix != 0, 1, helper_matrix)  # technically called adjacency matrix
 
     # ALL boundary particle neighbours for a given fluid particle will have same density
@@ -158,10 +154,10 @@ def calculate_density_derivative(fluid, wall, d_fluid, p_fluid, m_fluid, d0_flui
 
 
 def calculate_acceleration(fluid: PointCloud, wall: PointCloud, d_fluid, p_fluid, p_wall, m_fluid, d0_fluid, fluid_xi, fluid_adiabatic_exp, fluid_p_0, r_c, fluid_alpha, fluid_c_0, gravity,distances_vec, distances):
+    """This function implements the momentum equation and returns the  accleration on the fluid particles"""
+
     dx = h = 2 * fluid.elements.bounding_radius()
     epsilon = 0.01  # parameter to avoid zero denominator
-
-    #x = concat([fluid.points, wall.points], 'particles')  # concatenating fluid coords and then boundary coords
 
     d_fluid = rename_dims(d_fluid, 'particles', 'others')
     d_wall = rename_dims(zeros(instance(wall)), 'particles', 'others')
@@ -176,13 +172,6 @@ def calculate_acceleration(fluid: PointCloud, wall: PointCloud, d_fluid, p_fluid
     density = concat([d_fluid, d_wall], 'others')
     mass = concat([m_fluid, m_wall], 'others')
     pressure = concat([p_fluid, p_wall], 'others')
-
-    # Compute distance between all particles
-    # distances_vec = x - rename_dims(x, 'particles', 'others')  # contains both the x and y component of separation between particles
-    # distances = vec_length(distances_vec)  # contains magnitude of distance between ALL particles
-    # # Do all the cut off things before the final cut off for distance matrix
-    # distances_vec = where(distances > r_c, 0, distances_vec)
-    # distances = where(distances > r_c, 0, distances)  # Stores the distance between neighbours which are inside cutoff radius
 
     #alpha_ab = where(distances == 0, 0, fluid_alpha)  # Removing the particle itself from further calculation
     alpha_ab = where(distances == 0, 0, fluid_alpha)  # N X N matrix N-->all particles
@@ -215,7 +204,8 @@ def calculate_acceleration(fluid: PointCloud, wall: PointCloud, d_fluid, p_fluid
     # Slicing the distance matrix of fluid neighbour of fluid particles
     rad = distances.particles[:fluid.particles.size].others[:]
 
-    der_w = kernel_derivative(h, rad / h) / h
+    #####CHANGE KERNEL DERIVATIVE HERE
+    der_w = wendland_C2_kernel_derivative(h, rad / h) / h
 
     drx = distances_vec['x'].particles[:fluid.particles.size].others[:]
     dry = distances_vec['y'].particles[:fluid.particles.size].others[:]
@@ -289,12 +279,15 @@ def calculate_acceleration(fluid: PointCloud, wall: PointCloud, d_fluid, p_fluid
     a_x = a_x + math.sum(visc_art_fact * divide_no_nan(drx, rad), 'others')
     # a_y
     a_y = a_y + math.sum(visc_art_fact * divide_no_nan(dry, rad), 'others')
+
+    #Gravity addition
     a_y = a_y + gravity['y']
     fluid_acc = stack([a_x, a_y], channel(vector='x,y'))
     return fluid_acc
 
 
 def time_step_size(fluid_c_0, fluid: PointCloud, wall: PointCloud, fluid_alpha, gravity: Tensor):
+    """Implements adaptive time step ensuring CFL condition"""
     v_max_magnitude = math.maximum(math.max(vec_length(fluid.values)), math.max(vec_length(wall.values)))
     c_max = fluid_c_0  # wall_c_0 =0 so no point in taking the max out of them
     h = 2 * fluid.elements.bounding_radius()
@@ -305,9 +298,10 @@ def time_step_size(fluid_c_0, fluid: PointCloud, wall: PointCloud, fluid_alpha, 
     return math.min(wrap([dt_1, dt_2, dt_3], instance('time_steps')))
 
 
-def kernel_function(h: float, q: Tensor):
+def quintic_spline_kernel_function(h: float, q: Tensor):
     # Quintic Spline used as Weighting function
     # cutoff radius r_c = 3 * h;
+    """Quintic spline kernal function"""
     alpha_d = 0.004661441847880 / (h * h)  # ToDo does this depend on the dimensionality? If so, pass the geometry and compute geom.bounding_box().volume
     # Weighting function
     w = where((q < 3) & (q >= 2), alpha_d * ((3 - q) ** 5), q)
@@ -317,10 +311,26 @@ def kernel_function(h: float, q: Tensor):
     return w
 
 
-def kernel_derivative(h: float, q: Tensor):
+def qunitic_spline_kernel_derivative(h: float, q: Tensor):
+    """Quintic spline kernal derivative function. Returns dw/dq"""
     alpha_d = -0.0233072092393989 / (h * h)  # ToDo does this depend on the dimensionality? If so, pass the geometry and compute geom.bounding_box().volume
     d_w = where((q < 3) & (q >= 2), alpha_d * ((3 - q) ** 4), q)
     d_w = where((q < 2) & (q >= 1), alpha_d * (((3 - q) ** 4) - 6 * ((2 - q) ** 4)), d_w)
     d_w = where((q < 1) & (q > 0), alpha_d * (((3 - q) ** 4) - 6 * ((2 - q) ** 4) + 15 * ((1 - q) ** 4)), d_w)
     d_w = where((q >= 3), 0, d_w)
     return d_w
+
+def wendland_C2_kernel(h: float, q: Tensor):
+    """Wendland_C2 kernal function"""
+    alpha_d = 0.557042301/(h*h)
+    w = where((q>0) & (q<2), alpha_d*((1-0.5*q)**4)*(2*q +1) , q)
+    w = where((q >2) , 0, w)
+    return w
+
+def wendland_C2_kernel_derivative(h: float, q: Tensor):
+    """Wendland_C2 kernal derivative function. Returns dw/dq"""
+    alpha_d = -2.785211505 /(h*h)
+    d_w =  where((q>0) & (q<2) , alpha_d*((1-0.5*q)**3) * q ,q)
+    d_w = where((q >2) , 0, d_w)
+    return d_w
+

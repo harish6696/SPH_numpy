@@ -1,6 +1,6 @@
 from phi import math
 from phi.field import PointCloud
-from phi.math import Tensor, concat, instance, wrap, vec_length, where, divide_no_nan, zeros, PI
+from phi.math import Tensor, concat, instance, vec_length, where, divide_no_nan, zeros, PI
 
 
 def velocity_verlet(fluid: PointCloud,
@@ -16,7 +16,6 @@ def velocity_verlet(fluid: PointCloud,
                     fluid_p_0,
                     fluid_xi,
                     fluid_alpha,
-                    max_dist,
                     gravity: Tensor,
                     kernel: str = 'quintic-spline'):
     """
@@ -50,11 +49,12 @@ def velocity_verlet(fluid: PointCloud,
         d_fluid: Fluid density.
         p_wall: Obstacle pressure.
     """
+    particle_size = 2 * fluid.elements.bounding_radius()
     max_v = math.max(vec_length(concat([fluid.values, wall.values], 'particles')))
-    dt = time_step_size(fluid_c_0, max_v, 2 * fluid.elements.bounding_radius(), fluid_alpha, vec_length(gravity), fluid.spatial_rank)
+    dt = time_step_size(fluid_c_0, max_v, particle_size, fluid_alpha, vec_length(gravity), fluid.spatial_rank)
     # --- Neighbour distance calculation ---
     x = concat([fluid.points, wall.points], 'particles')
-    distances_vec = -math.pairwise_distances(x, max_dist)  # sending after performing cut-off to each function
+    distances_vec = -math.pairwise_distances(x, get_kernel_cutoff(kernel, particle_size))  # sending after performing cut-off to each function
     distances = vec_length(distances_vec)
     # --- Integrate velocity & position ---
     if prev_fluid_acc is None:
@@ -266,7 +266,16 @@ def time_step_size(c_max, v_max, particle_size, fluid_alpha, max_force, spatial_
     ], '0')
 
 
-def kernel_function(q: Tensor, spatial_rank: int, kernel='wendland-c2'):
+def get_kernel_cutoff(kernel: str, particle_size):
+    if kernel == 'quintic-spline':
+        return 3 * particle_size
+    elif kernel == 'wendland-c2':
+        return 2 * particle_size
+    else:
+        raise ValueError(kernel)
+
+
+def kernel_function(q: Tensor, spatial_rank: int, kernel='wendland-c2', enforce_cutoff=True):
     """
     Compute the SPH kernel value at a normalized scalar distance `q`.
 
@@ -274,6 +283,7 @@ def kernel_function(q: Tensor, spatial_rank: int, kernel='wendland-c2'):
         q: Normalized distance `phi.math.Tensor`.
         spatial_rank: Dimensionality of the simulation.
         kernel: Which kernel to use, one of `'wendland-c2'`, `'quintic-spline'`.
+        enforce_cutoff: If `True`, returns 0 outside the kernel's defined range, else the result is undefined.
 
     Returns:
         `phi.math.Tensor`
@@ -283,16 +293,16 @@ def kernel_function(q: Tensor, spatial_rank: int, kernel='wendland-c2'):
         w1 = (3-q)**5 - 6 * (2-q)**5 + 15 * (1-q)**5
         w2 = (3-q)**5 - 6 * (2-q)**5
         w3 = (3-q)**5
-        return alpha_d * where(q > 3, 0, where(q > 2, w3, where(q > 1, w2, w1)))
+        return alpha_d * _cutoff(where(q > 2, w3, where(q > 1, w2, w1)), q, kernel, enforce_cutoff)
     elif kernel == 'wendland-c2':  # cutoff at q=2 (d=2h)
         alpha_d = {2: 7/4/PI, 3: 21/16/PI}[spatial_rank]
         w = (1 - 0.5*q)**4 * (2*q + 1)
-        return alpha_d * where(q <= 2, w, 0)
+        return alpha_d * _cutoff(w, q, kernel, enforce_cutoff)
     else:
         raise ValueError(kernel)
 
 
-def kernel_derivative(q: Tensor, spatial_rank: int, kernel='wendland-c2') -> Tensor:
+def kernel_derivative(q: Tensor, spatial_rank: int, kernel='wendland-c2', enforce_cutoff=True) -> Tensor:
     """
     Compute the kernel derivative *dw/dq* of a scale-independent kernel, evaluated at normalized distance `q`.
 
@@ -300,6 +310,7 @@ def kernel_derivative(q: Tensor, spatial_rank: int, kernel='wendland-c2') -> Ten
         q: Normalized distance: physical distance divided by particle diameter.
         spatial_rank: Number of spatial dimensions of the simulation, `int`.
         kernel: Which kernel to use, one of `'wendland-c2'`, `'quintic-spline'`.
+        enforce_cutoff: If `True`, returns 0 outside the kernel's defined range, else the result is undefined.
 
     Returns:
         `phi.math.Tensor`
@@ -309,8 +320,18 @@ def kernel_derivative(q: Tensor, spatial_rank: int, kernel='wendland-c2') -> Ten
         dw_dq_1 = (3-q)**4 - 6 * (2-q)**4 + 15 * (1-q)**4
         dw_dq_2 = (3-q)**4 - 6 * (2-q)**4
         dw_dq_3 = (3-q)**4
-        return -5 * alpha_d * where(q > 3, 0, where(q > 2, dw_dq_3, where(q > 1, dw_dq_2, dw_dq_1)))
+        return -5 * alpha_d * _cutoff(where(q > 2, dw_dq_3, where(q > 1, dw_dq_2, dw_dq_1)), q, kernel, enforce_cutoff)
     elif kernel == 'wendland-c2':
         alpha_d = {2: 7/4/PI, 3: 21/16/PI}[spatial_rank]
-        dw_dq = ((1 - 0.5 * q) ** 3) * q
-        return -5 * alpha_d * where(q <= 2, dw_dq, 0)
+        dw_dq = (1 - 0.5 * q)**3 * q
+        return -5 * alpha_d * _cutoff(dw_dq, q, kernel, enforce_cutoff)
+    else:
+        raise ValueError(kernel)
+
+
+def _cutoff(value, q, kernel: str, enforce_cutoff: bool):
+    if not enforce_cutoff:
+        return value
+    else:
+        cutoff = get_kernel_cutoff(kernel, 1)
+        return where(q <= cutoff, value, 0)

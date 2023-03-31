@@ -7,7 +7,6 @@ velocity_verlet = jit_compile(velocity_verlet)
 # --- Setup ---
 gravity = vec(x=0, y=-9.81)
 dx = 0.006  # distance between particles
-max_dist = 3 * dx  # Quintic Spline (Cut off radius)
 width = dx * np.ceil(1.61 / dx)  # width=1.614 for dx= 0.006
 height = 0.3 ##TO BE MODIFIED ACCORDING TO THE SIMULATION
 v_max = math.sqrt(2 * math.vec_length(gravity) * height)
@@ -63,7 +62,7 @@ fluid_trj = [fluid]
 for i in range(25000):  # 11600
     print('timestep '+str(i))
     fluid, wall, acceleration, fluid_pressure, fluid_density, wall_pressure = velocity_verlet(
-        fluid, wall, None, fluid_pressure, wall_pressure, fluid_initial_density, fluid_density, fluid_particle_mass, fluid_adiabatic_exp, fluid_c_0, fluid_p_0, fluid_Xi, fluid_alpha, max_dist, gravity)
+        fluid, wall, None, fluid_pressure, wall_pressure, fluid_initial_density, fluid_density, fluid_particle_mass, fluid_adiabatic_exp, fluid_c_0, fluid_p_0, fluid_Xi, fluid_alpha, gravity)
     if i % 100 == 0:
         fluid_trj.append(fluid)
 

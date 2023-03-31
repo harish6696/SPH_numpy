@@ -24,20 +24,19 @@ def velocity_verlet(fluid: PointCloud,
     The implementation is based on the paper [juSPH](https://www.sciencedirect.com/science/article/pii/S2352711022000954).
 
     Args:
-        fluid: Pointcloud
-        wall: Point cloud
-        prev_fluid_acc: accleration of fluid particles from the previous time step
+        fluid: Fluid particles
+        wall: Boundary particles
+        prev_fluid_acc: acceleration of fluid particles from the previous time step
         p_fluid: Fluid pressure.
         p_wall: Obstacle pressure.
         d0_fluid: Fluid initial density (1000kg/m³ for water)
-        d_fluid: Fluid density (here we are assuiming Weakly Compressible SPH, therefore density changes)
+        d_fluid: Fluid density (here we are assuming Weakly Compressible SPH, therefore density changes)
         mass: mass of fluid particles
         fluid_adiabatic_exp: 
         fluid_c_0: Artificial speed of sound. Approximately 10*sqrt(2*g*H)
         fluid_p_0:Initial pressure of the fluid = density*g*H
         fluid_xi: Back pressure (For free surface flows = 0)
         fluid_alpha: Artificial viscosity constant
-        max_dist: Cut off radius (3*dx)
         gravity: Gravity vector as `Tensor`
         kernel: Which kernel to use, one of `'wendland-c2'`, `'quintic-spline'`.
 
@@ -101,7 +100,7 @@ def calculate_density_derivative(fluid, wall, d_fluid, p_fluid, m_fluid, d0_flui
     density = concat([d_fluid, d_wall], '~particles')  # 1D Scalar array of densities of all particles (now it is a row vector)
     mass = concat([m_fluid, wall_mass], '~particles')
 
-    particle_neighbour_density = where(distances == 0, 0, density)  # 0 for places which are not neighbours for particle under consideration. Stacks the particle density vertically. i.e. dupicates the densities
+    particle_neighbour_density = where(distances == 0, 0, density)  # 0 for places which are not neighbours for particle under consideration. Stacks the particle density vertically. i.e. duplicates the densities
     particle_neighbour_mass = where(distances == 0, 0, mass)
 
     relative_v = v - v.particles.as_dual()  # 2d matrix of ALL particle velocity
@@ -168,7 +167,7 @@ def calculate_acceleration(fluid: PointCloud, wall: PointCloud, d_fluid, p_fluid
     relative_v = vel - vel.particles.as_dual()  # ToDo only for the sparsity pattern of distances
 
     # neighbour_density = where(distances == 0, 0, density)  # Removing the particle itself from further calculation
-    neighbour_density = where(distances == 0, 0, density)  # 0 for places which are not neighbours for particle under consideration. Stacks the particle density vertically. i.e. dupicates the densities
+    neighbour_density = where(distances == 0, 0, density)  # 0 for places which are not neighbours for particle under consideration. Stacks the particle density vertically. i.e. duplicates the densities
 
     # neighbour_mass = where(distances == 0, 0, mass)  # Removing the particle itself from further calculation
     neighbour_mass = where(distances == 0, 0, mass)

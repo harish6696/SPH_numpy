@@ -18,7 +18,7 @@ def velocity_verlet(fluid: PointCloud,
                     fluid_alpha,
                     max_dist,
                     gravity: Tensor,
-                    kernel: str = 'wendland-c2'):
+                    kernel: str = 'quintic-spline'):
     """
     Compute one SPH time step using velocity verlet Euler.
 
@@ -34,10 +34,10 @@ def velocity_verlet(fluid: PointCloud,
         d_fluid: Fluid density (here we are assuiming Weakly Compressible SPH, therefore density changes)
         mass: mass of fluid particles
         fluid_adiabatic_exp: 
-        fluid_c_0: Artificial speed of sound . Approximately 10*sqrt(2*g*H)
+        fluid_c_0: Artificial speed of sound. Approximately 10*sqrt(2*g*H)
         fluid_p_0:Initial pressure of the fluid = density*g*H
         fluid_xi: Back pressure (For free surface flows = 0)
-        fluid_alpha: Artificial viscosity constant 
+        fluid_alpha: Artificial viscosity constant
         max_dist: Cut off radius (3*dx)
         gravity: Gravity vector as `Tensor`
         kernel: Which kernel to use, one of `'wendland-c2'`, `'quintic-spline'`.
@@ -50,7 +50,7 @@ def velocity_verlet(fluid: PointCloud,
         d_fluid: Fluid density.
         p_wall: Obstacle pressure.
     """
-    dt = time_step_size(fluid_c_0, fluid, wall, fluid_alpha, gravity)
+    dt = time_step_size(fluid_c_0, concat([fluid.values, wall.values], 'particles'), 2 * fluid.elements.bounding_radius(), fluid_alpha, vec_length(gravity))
     # --- Neighbour distance calculation ---
     x = concat([fluid.points, wall.points], 'particles')
     distances_vec = -math.pairwise_distances(x, max_dist)  # sending after performing cut-off to each function
@@ -212,12 +212,8 @@ def calculate_acceleration(fluid: PointCloud, wall: PointCloud, d_fluid, p_fluid
     # --- Momentum Equation for the pressure gradient part ---
     # (rho_a + rho_b)
     particle_density_sum = where(fluid_particle_neighbour_density != 0, d_fluid + fluid_particle_neighbour_density, fluid_particle_neighbour_density)
-
-    # rho_ab = 0.5 * (rho_a + rho_b)
     rho_ab = 0.5 * particle_density_sum
-
-    # Setting minimum density as the initial density
-    d_fluid = where(d_fluid == 0, d0_fluid, d_fluid)
+    d_fluid = where(d_fluid == 0, d0_fluid, d_fluid)  # Setting minimum density as the initial density
 
     # p_ab = ((rho_b * p_a) + (rho_a * p_b)) / (rho_a + rho_b)
     term_1 = fluid_particle_neighbour_density * p_fluid
@@ -247,15 +243,28 @@ def calculate_acceleration(fluid: PointCloud, wall: PointCloud, d_fluid, p_fluid
     return a + gravity
 
 
-def time_step_size(fluid_c_0, fluid: PointCloud, wall: PointCloud, fluid_alpha, gravity: Tensor):
-    """Implements adaptive time step ensuring CFL condition"""
-    v_max_magnitude = math.maximum(math.max(vec_length(fluid.values)), math.max(vec_length(wall.values)))
+def time_step_size(fluid_c_0, velocity: Tensor, particle_size, fluid_alpha, max_force: Tensor):
+    """
+    Determine maximum SPH step time from the CFL condition.
+
+    Args:
+        fluid_c_0: Artificial speed of sound.
+        velocity: Fluid particle / obstacle velocities occurring in the simulation.
+            The maximum velocity determines the time step.
+        particle_size: Size / diameter of fluid particles.
+        fluid_alpha: Artificial viscosity.
+        max_force: Scalar `Tensor`. Maximum external force that is exerted on any particle, such as gravity.
+
+    Returns:
+        `dt`: Time increment.
+    """
+    v_max_magnitude = math.max(vec_length(velocity))
     c_max = fluid_c_0  # wall_c_0 =0 so no point in taking the max out of them
-    h = 2 * fluid.elements.bounding_radius()
+    h = particle_size
     dt_1 = 0.25 * h / (c_max + v_max_magnitude)  # single value
-    mu = 0.5 / (fluid.spatial_rank + 2) * fluid_alpha * h * c_max  # viscous condition
+    mu = 0.5 / (velocity.vector.size + 2) * fluid_alpha * h * c_max  # viscous condition
     dt_2 = 0.125 * (h ** 2) / mu
-    dt_3 = 0.25 * math.sqrt(h / vec_length(gravity))
+    dt_3 = 0.25 * math.sqrt(h / max_force)
     return math.min(wrap([dt_1, dt_2, dt_3], instance('time_steps')))
 
 

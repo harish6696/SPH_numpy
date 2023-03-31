@@ -50,7 +50,8 @@ def velocity_verlet(fluid: PointCloud,
         d_fluid: Fluid density.
         p_wall: Obstacle pressure.
     """
-    dt = time_step_size(fluid_c_0, concat([fluid.values, wall.values], 'particles'), 2 * fluid.elements.bounding_radius(), fluid_alpha, vec_length(gravity))
+    max_v = math.max(vec_length(concat([fluid.values, wall.values], 'particles')))
+    dt = time_step_size(fluid_c_0, max_v, 2 * fluid.elements.bounding_radius(), fluid_alpha, vec_length(gravity), fluid.spatial_rank)
     # --- Neighbour distance calculation ---
     x = concat([fluid.points, wall.points], 'particles')
     distances_vec = -math.pairwise_distances(x, max_dist)  # sending after performing cut-off to each function
@@ -243,29 +244,26 @@ def calculate_acceleration(fluid: PointCloud, wall: PointCloud, d_fluid, p_fluid
     return a + gravity
 
 
-def time_step_size(fluid_c_0, velocity: Tensor, particle_size, fluid_alpha, max_force: Tensor):
+def time_step_size(c_max, v_max, particle_size, fluid_alpha, max_force, spatial_rank: int):
     """
     Determine maximum SPH step time from the CFL condition.
 
     Args:
-        fluid_c_0: Artificial speed of sound.
-        velocity: Fluid particle / obstacle velocities occurring in the simulation.
-            The maximum velocity determines the time step.
+        c_max: Maximum artificial speed of sound.
+        v_max: Maximum fluid particle / obstacle velocity occurring in the simulation.
         particle_size: Size / diameter of fluid particles.
         fluid_alpha: Artificial viscosity.
         max_force: Scalar `Tensor`. Maximum external force that is exerted on any particle, such as gravity.
+        spatial_rank: Spatial rank of the simulation, 1 for 1D, 2 for 2D, 3 for 3D.
 
     Returns:
         `dt`: Time increment.
     """
-    v_max_magnitude = math.max(vec_length(velocity))
-    c_max = fluid_c_0  # wall_c_0 =0 so no point in taking the max out of them
-    h = particle_size
-    dt_1 = 0.25 * h / (c_max + v_max_magnitude)  # single value
-    mu = 0.5 / (velocity.vector.size + 2) * fluid_alpha * h * c_max  # viscous condition
-    dt_2 = 0.125 * (h ** 2) / mu
-    dt_3 = 0.25 * math.sqrt(h / max_force)
-    return math.min(wrap([dt_1, dt_2, dt_3], instance('time_steps')))
+    return 0.25 * math.min([
+        particle_size / (c_max + v_max),
+        particle_size * (spatial_rank+2) / fluid_alpha / c_max,  # viscous condition
+        math.sqrt(particle_size / max_force)
+    ], '0')
 
 
 def kernel_function(q: Tensor, spatial_rank: int, kernel='wendland-c2'):
